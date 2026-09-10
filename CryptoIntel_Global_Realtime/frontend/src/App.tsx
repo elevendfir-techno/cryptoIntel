@@ -257,7 +257,244 @@ function WalletSearch(){
     </section>
   );
 }
-function FundFlow(){const [a,setA]=useState("");const [r,setR]=useState<any>();return <section className="panel"><h2>Fund Flow</h2><input value={a} onChange={e=>setA(e.target.value)} placeholder="Enter wallet address"/><button className="primary" onClick={async()=>setR(await fetch(`${API}/api/fundflow/${a||"demo"}`).then(x=>x.json()))}>Trace Flow</button>{r&&<pre>{JSON.stringify(r,null,2)}</pre>}</section>}
+function FundFlow(){
+  const [a,setA]=useState("");
+  const [r,setR]=useState<any>(null);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+
+  const traceFlow=async()=>{
+    if(!a.trim()){
+      setError("Please enter a Bitcoin wallet address.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setR(null);
+
+    try{
+      const response=await fetch(
+        `${API}/api/fundflow/${encodeURIComponent(a.trim())}?network=bitcoin&hops=2`
+      );
+
+      const data=await response.json();
+
+      if(!response.ok){
+        throw new Error(data.detail || "Fund-flow investigation failed");
+      }
+
+      setR(data);
+    }catch(e:any){
+      setError(e.message || "Fund-flow investigation failed");
+    }finally{
+      setLoading(false);
+    }
+  };
+
+  const btc=(sats:number)=>{
+    return ((sats || 0)/100000000).toFixed(8)+" BTC";
+  };
+
+  return (
+    <section className="panel">
+      <h2>Bitcoin Fund Flow Investigation</h2>
+      <p>
+        Trace wallet relationships and transaction flows using live blockchain data.
+      </p>
+
+      <div className="searchBox">
+        <input
+          value={a}
+          onChange={e=>setA(e.target.value)}
+          onKeyDown={e=>{
+            if(e.key==="Enter") traceFlow();
+          }}
+          placeholder="Enter Bitcoin wallet address"
+        />
+
+        <button
+          className="primary"
+          onClick={traceFlow}
+          disabled={loading}
+        >
+          {loading ? "Tracing..." : "Trace Flow"}
+        </button>
+      </div>
+
+      {error && <div className="empty">{error}</div>}
+
+      {r && (
+        <>
+          <div className="cards">
+            <Card
+              title="NETWORK"
+              value={r.network || "Bitcoin"}
+              sub="Blockchain"
+            />
+
+            <Card
+              title="WALLETS"
+              value={String(r.wallet_count || r.nodes?.length || 0)}
+              sub="Wallets identified"
+            />
+
+            <Card
+              title="EDGES"
+              value={String(r.edge_count || r.edges?.length || 0)}
+              sub="Fund-flow relationships"
+            />
+
+            <Card
+              title="TRANSACTIONS"
+              value={String(r.transactions_scanned || 0)}
+              sub="Transactions scanned"
+            />
+          </div>
+
+          <section className="panel">
+            <h2>Investigation Summary</h2>
+
+            <div className="row">
+              <b>Root Wallet</b>
+              <span>{r.root}</span>
+            </div>
+
+            <div className="row">
+              <b>Status</b>
+              <span className="liveDot">
+                ● {r.status || "LIVE"}
+              </span>
+            </div>
+
+            <div className="row">
+              <b>Hops Requested</b>
+              <span>{r.hops_requested ?? "—"}</span>
+            </div>
+
+            <div className="row">
+              <b>Hops Traced</b>
+              <span>{r.hops_traced ?? "—"}</span>
+            </div>
+
+            <div className="row">
+              <b>Data Source</b>
+              <span>{r.source || "Blockchain API"}</span>
+            </div>
+          </section>
+
+          <section className="panel">
+            <h2>Fund Flow Transactions</h2>
+
+            {r.edges?.length ? (
+              <div className="table">
+
+                <div className="thead">
+                  <span>Source</span>
+                  <span>Target</span>
+                  <span>Amount</span>
+                  <span>Type</span>
+                  <span>TXID</span>
+                  <span>Hop</span>
+                </div>
+
+                {r.edges.slice(0,50).map(
+                  (edge:any,i:number)=>(
+                    <div className="tr" key={`${edge.txid}-${i}`}>
+
+                      <span>
+                        {edge.source
+                          ? edge.source.slice(0,12)+"..."
+                          : "Unknown"}
+                      </span>
+
+                      <span>
+                        {edge.target
+                          ? edge.target.slice(0,12)+"..."
+                          : "Unknown"}
+                      </span>
+
+                      <span>
+                        {btc(edge.value_sats)}
+                      </span>
+
+                      <span className={
+                        edge.type==="incoming"
+                          ? "up"
+                          : "down"
+                      }>
+                        {edge.type?.toUpperCase() || "UNKNOWN"}
+                      </span>
+
+                      <span title={edge.txid}>
+                        {edge.txid
+                          ? edge.txid.slice(0,16)+"..."
+                          : "Unknown"}
+                      </span>
+
+                      <span>
+                        {edge.hop ?? "—"}
+                      </span>
+
+                    </div>
+                  )
+                )}
+
+              </div>
+            ) : (
+              <div className="empty">
+                No fund-flow transactions found.
+              </div>
+            )}
+          </section>
+
+          <section className="panel">
+            <h2>Wallet Network</h2>
+
+            {r.nodes?.length ? (
+              <div className="table">
+
+                <div className="thead">
+                  <span>Wallet</span>
+                  <span>Type</span>
+                  <span>Hop</span>
+                </div>
+
+                {r.nodes.slice(0,50).map(
+                  (node:any,i:number)=>(
+                    <div className="tr" key={node.id || i}>
+
+                      <span title={node.id}>
+                        {node.label ||
+                          (node.id
+                            ? node.id.slice(0,18)+"..."
+                            : "Unknown")}
+                      </span>
+
+                      <span>
+                        {node.type || "wallet"}
+                      </span>
+
+                      <span>
+                        {node.hop ?? "—"}
+                      </span>
+
+                    </div>
+                  )
+                )}
+
+              </div>
+            ) : (
+              <div className="empty">
+                No wallet nodes found.
+              </div>
+            )}
+          </section>
+        </>
+      )}
+    </section>
+  );
+}
 function Blockchain(){
   const [blocks,setBlocks]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);

@@ -1,0 +1,8 @@
+CryptoIntel_Global_Realtime/backend/test_server.py
+CryptoIntel_Global_Realtime/backend/__pycache__/
+CryptoIntel_Global_Realtime/backend/app/__pycache__/
+CryptoIntel_Global_Realtime/frontend/node_modules/
+CryptoIntel_Global_Realtime/frontend/dist/
+CryptoIntel_Global_Realtime/frontend/tsconfig.tsbuildinfo
+*.pyc
+.env
