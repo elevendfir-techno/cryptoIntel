@@ -59,7 +59,7 @@ export default function App(){
       {page==="Blockchain" && <Blockchain />}
       {page==="Wallet Investigation" && <WalletSearch/>}
       {page==="Fund Flow" && <FundFlow/>}
-      {page==="Detection" && <Info title="Suspicious Activity Detection" text="Rule engine supports large transfers, price/volume anomalies, exchange spreads and rapid multi-hop movement. Results are indicators, not automatic criminal attribution."/>}
+      {page==="Detection" && <Detection markets={latest} trades={trades}/>}
       {page==="Alerts" && <section className="panel"><h2>Live Alerts</h2>{alerts.map((a,i)=><div className="alert big" key={i}><b>{a.severity}</b><span>{a.type}</span><span>{a.message}</span><small>{a.timestamp}</small></div>)}{!alerts.length&&<div className="empty">No active alerts.</div>}</section>}
       {page==="DFIR Cases" && <Info title="DFIR Investigation Workspace" text="Use crypto transaction timelines, wallet relationships, fund-flow graphs and exported evidence to support authorized investigations."/>}
     </main>
@@ -68,6 +68,204 @@ export default function App(){
 function Card(p:any){return <div className="card"><small>{p.title}</small><strong>{p.value}</strong><span>{p.sub}</span></div>}
 function MarketTable({data}:{data:Market[]}){return <div className="table"><div className="thead"><span>Exchange</span><span>Market</span><span>Price</span><span>24H</span><span>Volume</span><span>Status</span></div>{data.map((m,i)=><div className="tr" key={i}><span>{m.exchange}</span><b>{m.symbol}</b><span>${m.price.toLocaleString(undefined,{maximumFractionDigits:8})}</span><span className={m.change24h>=0?"up":"down"}>{m.change24h?m.change24h.toFixed(2)+"%":"—"}</span><span>{m.volume.toLocaleString(undefined,{maximumFractionDigits:2})}</span><span className="liveDot">● LIVE</span></div>)}</div>}
 function Info({title,text}:{title:string;text:string}){return <section className="panel hero"><h2>{title}</h2><p>{text}</p></section>}
+function Detection({
+  markets,
+  trades
+}: {
+  markets: Market[];
+  trades: any[];
+}) {
+
+  const detections = useMemo(() => {
+
+    const results: any[] = [];
+
+    markets.forEach((m: Market) => {
+
+      if (Math.abs(m.change24h || 0) >= 8) {
+        results.push({
+          type: "PRICE ANOMALY",
+          severity: Math.abs(m.change24h) >= 15 ? "HIGH" : "MEDIUM",
+          asset: m.symbol,
+          source: m.exchange,
+          value: `${m.change24h.toFixed(2)}%`,
+          reason: "Unusual 24-hour price movement detected."
+        });
+      }
+
+      if ((m.volume || 0) >= 100000000) {
+        results.push({
+          type: "VOLUME SPIKE",
+          severity: "MEDIUM",
+          asset: m.symbol,
+          source: m.exchange,
+          value: m.volume.toLocaleString(),
+          reason: "High trading volume detected."
+        });
+      }
+
+    });
+
+    if (trades.length >= 50) {
+      results.push({
+        type: "RAPID ACTIVITY",
+        severity: "MEDIUM",
+        asset: "MULTIPLE",
+        source: "Market Feed",
+        value: `${trades.length} trades`,
+        reason: "High-frequency market activity detected."
+      });
+    }
+
+    return results.slice(0, 30);
+
+  }, [markets, trades]);
+
+  const high = detections.filter(
+    d => d.severity === "HIGH"
+  ).length;
+
+  const medium = detections.filter(
+    d => d.severity === "MEDIUM"
+  ).length;
+
+  const low = detections.filter(
+    d => d.severity === "LOW"
+  ).length;
+
+  return (
+    <>
+      <section className="panel hero">
+        <h2>Suspicious Activity Detection</h2>
+
+        <p>
+          Real-time rule-based detection for unusual cryptocurrency
+          market activity. Results are indicators for investigation,
+          not automatic criminal attribution.
+        </p>
+      </section>
+
+      <section className="cards">
+
+        <Card
+          title="TOTAL DETECTIONS"
+          value={String(detections.length)}
+          sub="Current indicators"
+        />
+
+        <Card
+          title="HIGH RISK"
+          value={String(high)}
+          sub="High severity"
+        />
+
+        <Card
+          title="MEDIUM RISK"
+          value={String(medium)}
+          sub="Medium severity"
+        />
+
+        <Card
+          title="LOW RISK"
+          value={String(low)}
+          sub="Low severity"
+        />
+
+      </section>
+
+      <section className="panel">
+
+        <h2>Detection Rules</h2>
+
+        <div className="row">
+          <b>PRICE ANOMALY</b>
+          <span>Large 24H price movement</span>
+          <small>ACTIVE</small>
+        </div>
+
+        <div className="row">
+          <b>VOLUME SPIKE</b>
+          <span>Unusually high trading volume</span>
+          <small>ACTIVE</small>
+        </div>
+
+        <div className="row">
+          <b>RAPID ACTIVITY</b>
+          <span>High-frequency market activity</span>
+          <small>ACTIVE</small>
+        </div>
+
+        <div className="row">
+          <b>LARGE TRANSFER</b>
+          <span>Large blockchain fund movement</span>
+          <small>READY</small>
+        </div>
+
+        <div className="row">
+          <b>EXCHANGE SPREAD</b>
+          <span>Unusual price difference between exchanges</span>
+          <small>READY</small>
+        </div>
+
+        <div className="row">
+          <b>MULTI-HOP MOVEMENT</b>
+          <span>Rapid movement across multiple wallets</span>
+          <small>READY</small>
+        </div>
+
+      </section>
+
+      <section className="panel">
+
+        <h2>Detection Results</h2>
+
+        {detections.length ? (
+
+          <div className="table">
+
+            <div className="thead">
+              <span>Type</span>
+              <span>Severity</span>
+              <span>Asset</span>
+              <span>Source</span>
+              <span>Value</span>
+              <span>Reason</span>
+            </div>
+
+            {detections.map((d, i) => (
+
+              <div className="tr" key={i}>
+
+                <b>{d.type}</b>
+
+                <span>{d.severity}</span>
+
+                <span>{d.asset}</span>
+
+                <span>{d.source}</span>
+
+                <span>{d.value}</span>
+
+                <span>{d.reason}</span>
+
+              </div>
+
+            ))}
+
+          </div>
+
+        ) : (
+
+          <div className="empty">
+            No suspicious activity detected in the current live feed.
+          </div>
+
+        )}
+
+      </section>
+    </>
+  );
+}
 function WalletSearch(){
   const [a,setA]=useState("");
   const [r,setR]=useState<any>(null);
