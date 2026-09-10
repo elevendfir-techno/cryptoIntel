@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API = "https://cryptointel-backend-fx16.onrender.com";
 type Market = {symbol:string; exchange:string; price:number; volume:number; change24h:number; timestamp:string};
 type Alert = {type:string; severity:string; message:string; timestamp:string};
 
