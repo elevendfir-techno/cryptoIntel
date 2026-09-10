@@ -56,8 +56,7 @@ export default function App(){
       </>}
 
       {page==="Live Markets" && <section className="panel"><h2>Real-Time Exchange Markets</h2><MarketTable data={latest}/></section>}
-
-      {page==="Blockchain" && <Info title="Blockchain Intelligence" text="Architecture prepared for Bitcoin, Ethereum, Solana, Tron and Polygon. Connect node/indexer credentials to ingest live blocks, transactions and token transfers."/>}
+      {page==="Blockchain" && <Blockchain />}
       {page==="Wallet Investigation" && <WalletSearch/>}
       {page==="Fund Flow" && <FundFlow/>}
       {page==="Detection" && <Info title="Suspicious Activity Detection" text="Rule engine supports large transfers, price/volume anomalies, exchange spreads and rapid multi-hop movement. Results are indicators, not automatic criminal attribution."/>}
@@ -71,3 +70,59 @@ function MarketTable({data}:{data:Market[]}){return <div className="table"><div 
 function Info({title,text}:{title:string;text:string}){return <section className="panel hero"><h2>{title}</h2><p>{text}</p></section>}
 function WalletSearch(){const [a,setA]=useState("");const [r,setR]=useState<any>();return <section className="panel"><h2>Wallet Investigation</h2><input value={a} onChange={e=>setA(e.target.value)} placeholder="Enter wallet address"/><button className="primary" onClick={async()=>setR(await fetch(`${API}/api/wallets/${a||"demo"}`).then(x=>x.json()))}>Investigate</button>{r&&<pre>{JSON.stringify(r,null,2)}</pre>}</section>}
 function FundFlow(){const [a,setA]=useState("");const [r,setR]=useState<any>();return <section className="panel"><h2>Fund Flow</h2><input value={a} onChange={e=>setA(e.target.value)} placeholder="Enter wallet address"/><button className="primary" onClick={async()=>setR(await fetch(`${API}/api/fundflow/${a||"demo"}`).then(x=>x.json()))}>Trace Flow</button>{r&&<pre>{JSON.stringify(r,null,2)}</pre>}</section>}
+function Blockchain(){
+  const [blocks,setBlocks]=useState<any[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState("");
+
+  useEffect(()=>{
+    fetch(`${API}/api/blockchain/bitcoin/blocks`)
+      .then(r=>{
+        if(!r.ok) throw new Error("Blockchain API unavailable");
+        return r.json();
+      })
+      .then(d=>{
+        setBlocks(d.blocks || []);
+        setLoading(false);
+      })
+      .catch(e=>{
+        setError(e.message);
+        setLoading(false);
+      });
+  },[]);
+
+  return (
+    <section className="panel">
+      <h2>Bitcoin Blockchain Intelligence</h2>
+      <p>LIVE blockchain data from Bitcoin network</p>
+
+      {loading && <div className="empty">Loading live blocks...</div>}
+
+      {error && <div className="empty">{error}</div>}
+
+      {!loading && !error && (
+        <div className="table">
+          <div className="thead">
+            <span>Height</span>
+            <span>Block Hash</span>
+            <span>Transactions</span>
+            <span>Size</span>
+            <span>Weight</span>
+            <span>Status</span>
+          </div>
+
+          {blocks.map((b,i)=>(
+            <div className="tr" key={i}>
+              <b>{b.height}</b>
+              <span>{b.id.slice(0,18)}...</span>
+              <span>{b.tx_count}</span>
+              <span>{b.size?.toLocaleString()}</span>
+              <span>{b.weight?.toLocaleString()}</span>
+              <span className="liveDot">● LIVE</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
