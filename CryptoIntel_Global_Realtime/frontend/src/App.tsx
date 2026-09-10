@@ -68,7 +68,195 @@ export default function App(){
 function Card(p:any){return <div className="card"><small>{p.title}</small><strong>{p.value}</strong><span>{p.sub}</span></div>}
 function MarketTable({data}:{data:Market[]}){return <div className="table"><div className="thead"><span>Exchange</span><span>Market</span><span>Price</span><span>24H</span><span>Volume</span><span>Status</span></div>{data.map((m,i)=><div className="tr" key={i}><span>{m.exchange}</span><b>{m.symbol}</b><span>${m.price.toLocaleString(undefined,{maximumFractionDigits:8})}</span><span className={m.change24h>=0?"up":"down"}>{m.change24h?m.change24h.toFixed(2)+"%":"—"}</span><span>{m.volume.toLocaleString(undefined,{maximumFractionDigits:2})}</span><span className="liveDot">● LIVE</span></div>)}</div>}
 function Info({title,text}:{title:string;text:string}){return <section className="panel hero"><h2>{title}</h2><p>{text}</p></section>}
-function WalletSearch(){const [a,setA]=useState("");const [r,setR]=useState<any>();return <section className="panel"><h2>Wallet Investigation</h2><input value={a} onChange={e=>setA(e.target.value)} placeholder="Enter wallet address"/><button className="primary" onClick={async()=>setR(await fetch(`${API}/api/wallets/${a||"demo"}`).then(x=>x.json()))}>Investigate</button>{r&&<pre>{JSON.stringify(r,null,2)}</pre>}</section>}
+function WalletSearch(){
+  const [a,setA]=useState("");
+  const [r,setR]=useState<any>(null);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+
+  const investigate=async()=>{
+    if(!a.trim()){
+      setError("Please enter a Bitcoin wallet address.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setR(null);
+
+    try{
+      const response=await fetch(
+        `${API}/api/wallets/${encodeURIComponent(a.trim())}?network=bitcoin`
+      );
+
+      const data=await response.json();
+
+      if(!response.ok){
+        throw new Error(data.detail || "Wallet lookup failed");
+      }
+
+      setR(data);
+    }catch(e:any){
+      setError(e.message || "Wallet lookup failed");
+    }finally{
+      setLoading(false);
+    }
+  };
+
+  const btc=(sats:number)=>{
+    return (sats/100000000).toFixed(8)+" BTC";
+  };
+
+  return (
+    <section className="panel">
+      <h2>Bitcoin Wallet Investigation</h2>
+      <p>Investigate Bitcoin addresses using live blockchain data.</p>
+
+      <div className="searchBox">
+        <input
+          value={a}
+          onChange={e=>setA(e.target.value)}
+          onKeyDown={e=>{
+            if(e.key==="Enter") investigate();
+          }}
+          placeholder="Enter Bitcoin wallet address"
+        />
+
+        <button
+          className="primary"
+          onClick={investigate}
+          disabled={loading}
+        >
+          {loading ? "Investigating..." : "Investigate"}
+        </button>
+      </div>
+
+      {error && <div className="empty">{error}</div>}
+
+      {r && (
+        <>
+          <div className="cards">
+            <Card
+              title="NETWORK"
+              value={r.network}
+              sub="Blockchain"
+            />
+
+            <Card
+              title="BALANCE"
+              value={btc(r.balance?.balance || 0)}
+              sub="Current calculated balance"
+            />
+
+            <Card
+              title="TRANSACTIONS"
+              value={String(r.activity?.confirmed_transactions || 0)}
+              sub="Confirmed transactions"
+            />
+
+            <Card
+              title="STATUS"
+              value="LIVE"
+              sub="Blockstream data"
+            />
+          </div>
+
+          <section className="panel">
+            <h2>Wallet Details</h2>
+
+            <div className="row">
+              <b>Address</b>
+              <span>{r.address}</span>
+            </div>
+
+            <div className="row">
+              <b>Balance</b>
+              <span>{btc(r.balance?.balance || 0)}</span>
+            </div>
+
+            <div className="row">
+              <b>Total Received</b>
+              <span>{btc(r.balance?.funded || 0)}</span>
+            </div>
+
+            <div className="row">
+              <b>Total Spent</b>
+              <span>{btc(r.balance?.spent || 0)}</span>
+            </div>
+          </section>
+
+          <section className="panel">
+            <h2>Wallet Activity</h2>
+
+            <div className="row">
+              <b>Incoming Transactions</b>
+              <span>{r.activity?.funded_transactions || 0}</span>
+            </div>
+
+            <div className="row">
+              <b>Outgoing Transactions</b>
+              <span>{r.activity?.spent_transactions || 0}</span>
+            </div>
+
+            <div className="row">
+              <b>Confirmed Transactions</b>
+              <span>{r.activity?.confirmed_transactions || 0}</span>
+            </div>
+          </section>
+
+          <section className="panel">
+            <h2>Transaction History</h2>
+
+            {r.transactions?.length ? (
+              <div className="table">
+                <div className="thead">
+                  <span>Transaction</span>
+                  <span>Status</span>
+                  <span>Block</span>
+                  <span>Timestamp</span>
+                </div>
+
+                {r.transactions.slice(0,20).map(
+                  (tx:any,i:number)=>(
+                    <div className="tr" key={tx.txid || i}>
+                      <span>
+                        {tx.txid
+                          ? tx.txid.slice(0,16)+"..."
+                          : "Unknown"}
+                      </span>
+
+                      <span className="liveDot">
+                        ● {tx.status?.confirmed
+                          ? "CONFIRMED"
+                          : "MEMPOOL"}
+                      </span>
+
+                      <span>
+                        {tx.status?.block_height || "Pending"}
+                      </span>
+
+                      <span>
+                        {tx.status?.block_time
+                          ? new Date(
+                              tx.status.block_time * 1000
+                            ).toLocaleString()
+                          : "Pending"}
+                      </span>
+                    </div>
+                  )
+                )}
+              </div>
+            ) : (
+              <div className="empty">
+                No transactions found.
+              </div>
+            )}
+          </section>
+        </>
+      )}
+    </section>
+  );
+}
 function FundFlow(){const [a,setA]=useState("");const [r,setR]=useState<any>();return <section className="panel"><h2>Fund Flow</h2><input value={a} onChange={e=>setA(e.target.value)} placeholder="Enter wallet address"/><button className="primary" onClick={async()=>setR(await fetch(`${API}/api/fundflow/${a||"demo"}`).then(x=>x.json()))}>Trace Flow</button>{r&&<pre>{JSON.stringify(r,null,2)}</pre>}</section>}
 function Blockchain(){
   const [blocks,setBlocks]=useState<any[]>([]);
