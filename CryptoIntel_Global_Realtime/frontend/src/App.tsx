@@ -13,13 +13,44 @@ export default function App(){
   const [connected,setConnected]=useState(false);
 
   useEffect(()=>{
-    const wsUrl=API.replace(/^http/,"ws")+"/ws/markets";
-    const ws=new WebSocket(wsUrl);
-    ws.onopen=()=>setConnected(true);
-    ws.onclose=()=>setConnected(false);
-    ws.onmessage=e=>{const d=JSON.parse(e.data);setMarkets(d.markets||[]);setTrades(d.trades||[]);setAlerts(d.alerts||[])};
-    return ()=>ws.close();
-  },[]);
+
+  const wsUrl=API.replace(/^http/,"ws")+"/ws/markets";
+
+  const ws=new WebSocket(wsUrl);
+
+  ws.onopen=()=>setConnected(true);
+
+  ws.onclose=()=>setConnected(false);
+
+  ws.onmessage=e=>{
+    const d=JSON.parse(e.data);
+    setMarkets(d.markets||[]);
+    setAlerts(d.alerts||[]);
+  };
+
+  const loadTrades = async () => {
+    try {
+      const response = await fetch(`${API}/api/markets/trades`);
+      const data = await response.json();
+
+      if (response.ok) {
+        setTrades(data || []);
+      }
+    } catch {
+      // Keep previous trades if API is temporarily unavailable
+    }
+  };
+
+  loadTrades();
+
+  const interval = setInterval(loadTrades, 2000);
+
+  return ()=>{
+    ws.close();
+    clearInterval(interval);
+  };
+
+},[]);
   useEffect(()=>{
   const loadDetectionCount = async () => {
     try {
