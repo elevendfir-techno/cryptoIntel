@@ -76,125 +76,55 @@ function Detection({
   trades: any[];
 }) {
 
-  const detections = useMemo(() => {
+  const [detections, setDetections] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-    const results: any[] = [];
+  const loadDetections = async () => {
+    try {
+      setError("");
 
-    // 1. PRICE ANOMALY
-    markets.forEach((m: Market) => {
+      const response = await fetch(
+        `${API}/api/detection`
+      );
 
-      if (Math.abs(m.change24h || 0) >= 8) {
+      const data = await response.json();
 
-        results.push({
-          type: "PRICE ANOMALY",
-          severity: Math.abs(m.change24h) >= 15 ? "HIGH" : "MEDIUM",
-          asset: m.symbol,
-          source: m.exchange,
-          value: `${m.change24h.toFixed(2)}%`,
-          reason: "Unusual 24-hour price movement detected."
-        });
-
+      if (!response.ok) {
+        throw new Error(
+          data.detail || "Detection API unavailable"
+        );
       }
 
-    });
+      setDetections(
+        data.detections || []
+      );
 
-    // 2. VOLUME SPIKE
-    markets.forEach((m: Market) => {
+    } catch (e: any) {
 
-      if ((m.volume || 0) >= 100000000) {
+      setError(
+        e.message || "Detection API unavailable"
+      );
 
-        results.push({
-          type: "VOLUME SPIKE",
-          severity: "MEDIUM",
-          asset: m.symbol,
-          source: m.exchange,
-          value: m.volume.toLocaleString(),
-          reason: "High trading volume detected."
-        });
+    } finally {
 
-      }
-
-    });
-
-    // 3. RAPID ACTIVITY
-    if (trades.length >= 50) {
-
-      results.push({
-        type: "RAPID ACTIVITY",
-        severity: "MEDIUM",
-        asset: "MULTIPLE",
-        source: "Market Feed",
-        value: `${trades.length} trades`,
-        reason: "High-frequency market activity detected."
-      });
+      setLoading(false);
 
     }
+  };
 
-    // 4. EXCHANGE SPREAD
-    const assetPrices: Record<
-      string,
-      { exchange: string; price: number }[]
-    > = {};
+  useEffect(() => {
 
-    markets.forEach((m: Market) => {
+    loadDetections();
 
-      const symbol = (m.symbol || "")
-        .toUpperCase()
-        .replace(/[-_/]/g, "")
-        .replace("USDT", "")
-        .replace("USD", "");
+    const interval = setInterval(
+      loadDetections,
+      10000
+    );
 
-      if (!symbol || !m.price || m.price <= 0) {
-        return;
-      }
+    return () => clearInterval(interval);
 
-      if (!assetPrices[symbol]) {
-        assetPrices[symbol] = [];
-      }
-
-      assetPrices[symbol].push({
-        exchange: m.exchange,
-        price: m.price
-      });
-
-    });
-
-    Object.entries(assetPrices).forEach(([asset, prices]) => {
-
-      if (prices.length < 2) {
-        return;
-      }
-
-      const highest = prices.reduce(
-        (a, b) => a.price > b.price ? a : b
-      );
-
-      const lowest = prices.reduce(
-        (a, b) => a.price < b.price ? a : b
-      );
-
-      const spread =
-        ((highest.price - lowest.price) / lowest.price) * 100;
-
-      if (spread >= 2) {
-
-        results.push({
-          type: "EXCHANGE SPREAD",
-          severity: spread >= 5 ? "HIGH" : "MEDIUM",
-          asset,
-          source: `${lowest.exchange} → ${highest.exchange}`,
-          value: `${spread.toFixed(2)}%`,
-          reason:
-            "Significant price difference detected across live exchanges."
-        });
-
-      }
-
-    });
-
-    return results.slice(0, 30);
-
-  }, [markets, trades]);
+  }, []);
 
   const high = detections.filter(
     d => d.severity === "HIGH"
@@ -212,22 +142,33 @@ function Detection({
     <>
       <section className="panel hero">
 
-        <h2>Suspicious Activity Detection</h2>
+        <h2>
+          Suspicious Activity Detection
+        </h2>
 
         <p>
-          Real-time rule-based detection for unusual cryptocurrency
-          market activity. Results are indicators for investigation,
-          not automatic criminal attribution.
+          Real-time rule-based detection using
+          live cryptocurrency market feeds and
+          Bitcoin blockchain data.
         </p>
 
+        <div style={{
+          marginTop: "12px",
+          fontSize: "12px",
+          color: "#777"
+        }}>
+          ● LIVE DETECTION ENGINE
+        </div>
+
       </section>
+
 
       <section className="cards">
 
         <Card
           title="TOTAL DETECTIONS"
           value={String(detections.length)}
-          sub="Current indicators"
+          sub="Live indicators"
         />
 
         <Card
@@ -250,53 +191,111 @@ function Detection({
 
       </section>
 
+
       <section className="panel">
 
-        <h2>Detection Rules</h2>
+        <h2>
+          Detection Rules
+        </h2>
 
         <div className="row">
           <b>PRICE ANOMALY</b>
-          <span>Large 24H price movement</span>
-          <small>ACTIVE</small>
+          <span>
+            Large 24H price movement
+          </span>
+          <small>
+            ACTIVE
+          </small>
         </div>
 
         <div className="row">
           <b>VOLUME SPIKE</b>
-          <span>Unusually high trading volume</span>
-          <small>ACTIVE</small>
+          <span>
+            Unusually high trading volume
+          </span>
+          <small>
+            ACTIVE
+          </small>
         </div>
 
         <div className="row">
           <b>RAPID ACTIVITY</b>
-          <span>High-frequency market activity</span>
-          <small>ACTIVE</small>
-        </div>
-
-        <div className="row">
-          <b>LARGE TRANSFER</b>
-          <span>Large blockchain fund movement</span>
-          <small>BLOCKCHAIN REQUIRED</small>
+          <span>
+            High-frequency market activity
+          </span>
+          <small>
+            ACTIVE
+          </small>
         </div>
 
         <div className="row">
           <b>EXCHANGE SPREAD</b>
-          <span>Unusual price difference between exchanges</span>
-          <small>ACTIVE</small>
+          <span>
+            Unusual price difference between exchanges
+          </span>
+          <small>
+            ACTIVE
+          </small>
+        </div>
+
+        <div className="row">
+          <b>LARGE TRANSFER</b>
+          <span>
+            Large Bitcoin transaction output
+          </span>
+          <small>
+            ACTIVE
+          </small>
+        </div>
+
+        <div className="row">
+          <b>HIGH VALUE TRANSACTION</b>
+          <span>
+            Very large aggregate Bitcoin output value
+          </span>
+          <small>
+            ACTIVE
+          </small>
         </div>
 
         <div className="row">
           <b>MULTI-HOP MOVEMENT</b>
-          <span>Rapid movement across multiple wallets</span>
-          <small>BLOCKCHAIN REQUIRED</small>
+          <span>
+            Wallet relationship tracing
+          </span>
+          <small>
+            BLOCKCHAIN ANALYSIS
+          </small>
         </div>
 
       </section>
 
+
       <section className="panel">
 
-        <h2>Detection Results</h2>
+        <h2>
+          Live Detection Results
+        </h2>
 
-        {detections.length ? (
+        {loading && (
+          <div className="empty">
+            Loading live blockchain and market detections...
+          </div>
+        )}
+
+        {error && (
+          <div className="empty">
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && detections.length === 0 && (
+          <div className="empty">
+            No detection events currently meet the configured thresholds.
+          </div>
+        )}
+
+        {!loading && !error && detections.length > 0 && (
 
           <div className="table">
 
@@ -304,42 +303,166 @@ function Detection({
               <span>Type</span>
               <span>Severity</span>
               <span>Asset</span>
-              <span>Source</span>
               <span>Value</span>
-              <span>Reason</span>
+              <span>Source</span>
+              <span>Details</span>
             </div>
 
-            {detections.map((d, i) => (
 
-              <div className="tr" key={i}>
+            {detections.map(
+              (d: any, i: number) => (
 
-                <b>{d.type}</b>
+                <div
+                  className="tr"
+                  key={`${d.txid || d.type}-${i}`}
+                >
 
-                <span>{d.severity}</span>
+                  <b>
+                    {d.type || "UNKNOWN"}
+                  </b>
 
-                <span>{d.asset}</span>
 
-                <span>{d.source}</span>
+                  <span>
+                    {d.severity || "UNKNOWN"}
+                  </span>
 
-                <span>{d.value}</span>
 
-                <span>{d.reason}</span>
+                  <span>
+                    {d.asset || "—"}
+                  </span>
 
-              </div>
 
-            ))}
+                  <span>
+                    {d.value || "—"}
+                  </span>
 
-          </div>
 
-        ) : (
+                  <span>
+                    {d.source || "—"}
+                  </span>
 
-          <div className="empty">
-            No suspicious activity detected in the current live feed.
+
+                  <span>
+                    {d.reason || "—"}
+                  </span>
+
+                </div>
+
+              )
+            )}
+
           </div>
 
         )}
 
       </section>
+
+
+      {!loading &&
+        !error &&
+        detections.some(d => d.txid) && (
+
+        <section className="panel">
+
+          <h2>
+            Blockchain Detection Evidence
+          </h2>
+
+          <div className="table">
+
+            <div className="thead">
+              <span>Detection</span>
+              <span>BTC Value</span>
+              <span>TXID</span>
+              <span>Block</span>
+              <span>Network</span>
+              <span>Source</span>
+            </div>
+
+
+            {detections
+              .filter(d => d.txid)
+              .map(
+                (d: any, i: number) => (
+
+                  <div
+                    className="tr"
+                    key={`blockchain-${d.txid}-${i}`}
+                  >
+
+                    <b>
+                      {d.type}
+                    </b>
+
+
+                    <span>
+                      {d.value || "—"}
+                    </span>
+
+
+                    <span
+                      title={d.txid}
+                      style={{
+                        fontFamily: "monospace"
+                      }}
+                    >
+                      {d.txid
+                        ? d.txid.slice(0, 20) + "..."
+                        : "—"}
+                    </span>
+
+
+                    <span
+                      title={d.block}
+                      style={{
+                        fontFamily: "monospace"
+                      }}
+                    >
+                      {d.block
+                        ? d.block.slice(0, 20) + "..."
+                        : "—"}
+                    </span>
+
+
+                    <span>
+                      {d.network || "Bitcoin"}
+                    </span>
+
+
+                    <span>
+                      {d.data_source ||
+                        "Blockstream Esplora"}
+                    </span>
+
+                  </div>
+
+                )
+              )}
+
+          </div>
+
+        </section>
+
+      )}
+
+
+      <section className="panel hero">
+
+        <h2>
+          Investigation Note
+        </h2>
+
+        <p>
+          Detection events are rule-based indicators
+          generated from live market and blockchain
+          data. A large transaction or unusual market
+          movement does not by itself establish fraud,
+          compromise, or criminal activity and should
+          be investigated with additional context.
+        </p>
+
+      </section>
+
     </>
   );
 }
