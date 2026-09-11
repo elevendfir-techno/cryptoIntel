@@ -137,8 +137,24 @@ export default function App(){
         <section className="panel"><h2>Global Market Feed</h2><MarketTable data={top}/></section>
         <section className="grid2">
           <section className="panel"><h2>Live Trades</h2>{trades.slice(0,10).map((t,i)=><div className="row" key={i}><b>{t.symbol}</b><span>{t.side}</span><span>${price(t.price)}</span><small>{t.exchange}</small></div>)}</section>
-          <section className="panel"><h2>Detection Feed</h2>{alerts.slice(0,10).map((a,i)=><div className="alert" key={i}><b>{a.severity}</b><span>{a.message}</span></div>)}{!alerts.length&&<div className="empty">Detection engine ready — no current alerts.</div>}</section>
-        </section>
+          <section className="panel">
+  <h2>Detection Feed</h2>
+
+  {alerts.slice(0,10).map((a,i)=>(
+    <div className="alert" key={i}>
+      <b>{a.severity}</b>
+      <span>{a.type}</span>
+      <span>{a.message}</span>
+    </div>
+  ))}
+
+  {!alerts.length && (
+    <div className="empty">
+      Detection engine ready — no current alerts.
+    </div>
+  )}
+</section>
+</section>
       </>}
 
       {page==="Live Markets" && <section className="panel"><h2>Real-Time Exchange Markets</h2><MarketTable data={latest}/></section>}
