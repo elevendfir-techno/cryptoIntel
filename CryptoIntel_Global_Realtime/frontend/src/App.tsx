@@ -80,9 +80,11 @@ function Detection({
 
     const results: any[] = [];
 
+    // 1. PRICE ANOMALY
     markets.forEach((m: Market) => {
 
       if (Math.abs(m.change24h || 0) >= 8) {
+
         results.push({
           type: "PRICE ANOMALY",
           severity: Math.abs(m.change24h) >= 15 ? "HIGH" : "MEDIUM",
@@ -91,9 +93,16 @@ function Detection({
           value: `${m.change24h.toFixed(2)}%`,
           reason: "Unusual 24-hour price movement detected."
         });
+
       }
 
+    });
+
+    // 2. VOLUME SPIKE
+    markets.forEach((m: Market) => {
+
       if ((m.volume || 0) >= 100000000) {
+
         results.push({
           type: "VOLUME SPIKE",
           severity: "MEDIUM",
@@ -102,11 +111,14 @@ function Detection({
           value: m.volume.toLocaleString(),
           reason: "High trading volume detected."
         });
+
       }
 
     });
 
+    // 3. RAPID ACTIVITY
     if (trades.length >= 50) {
+
       results.push({
         type: "RAPID ACTIVITY",
         severity: "MEDIUM",
@@ -115,7 +127,70 @@ function Detection({
         value: `${trades.length} trades`,
         reason: "High-frequency market activity detected."
       });
+
     }
+
+    // 4. EXCHANGE SPREAD
+    const assetPrices: Record<
+      string,
+      { exchange: string; price: number }[]
+    > = {};
+
+    markets.forEach((m: Market) => {
+
+      const symbol = (m.symbol || "")
+        .toUpperCase()
+        .replace(/[-_/]/g, "")
+        .replace("USDT", "")
+        .replace("USD", "");
+
+      if (!symbol || !m.price || m.price <= 0) {
+        return;
+      }
+
+      if (!assetPrices[symbol]) {
+        assetPrices[symbol] = [];
+      }
+
+      assetPrices[symbol].push({
+        exchange: m.exchange,
+        price: m.price
+      });
+
+    });
+
+    Object.entries(assetPrices).forEach(([asset, prices]) => {
+
+      if (prices.length < 2) {
+        return;
+      }
+
+      const highest = prices.reduce(
+        (a, b) => a.price > b.price ? a : b
+      );
+
+      const lowest = prices.reduce(
+        (a, b) => a.price < b.price ? a : b
+      );
+
+      const spread =
+        ((highest.price - lowest.price) / lowest.price) * 100;
+
+      if (spread >= 2) {
+
+        results.push({
+          type: "EXCHANGE SPREAD",
+          severity: spread >= 5 ? "HIGH" : "MEDIUM",
+          asset,
+          source: `${lowest.exchange} → ${highest.exchange}`,
+          value: `${spread.toFixed(2)}%`,
+          reason:
+            "Significant price difference detected across live exchanges."
+        });
+
+      }
+
+    });
 
     return results.slice(0, 30);
 
@@ -136,6 +211,7 @@ function Detection({
   return (
     <>
       <section className="panel hero">
+
         <h2>Suspicious Activity Detection</h2>
 
         <p>
@@ -143,6 +219,7 @@ function Detection({
           market activity. Results are indicators for investigation,
           not automatic criminal attribution.
         </p>
+
       </section>
 
       <section className="cards">
@@ -198,19 +275,19 @@ function Detection({
         <div className="row">
           <b>LARGE TRANSFER</b>
           <span>Large blockchain fund movement</span>
-          <small>READY</small>
+          <small>BLOCKCHAIN REQUIRED</small>
         </div>
 
         <div className="row">
           <b>EXCHANGE SPREAD</b>
           <span>Unusual price difference between exchanges</span>
-          <small>READY</small>
+          <small>ACTIVE</small>
         </div>
 
         <div className="row">
           <b>MULTI-HOP MOVEMENT</b>
           <span>Rapid movement across multiple wallets</span>
-          <small>READY</small>
+          <small>BLOCKCHAIN REQUIRED</small>
         </div>
 
       </section>

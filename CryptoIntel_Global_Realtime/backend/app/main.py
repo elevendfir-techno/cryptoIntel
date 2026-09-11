@@ -7,6 +7,7 @@ from app.api.alerts import router as alerts_router
 from app.api.blockchain import router as blockchain_router
 from app.api.wallets import router as wallets_router
 from app.api.fundflow import router as fundflow_router
+from app.api.detection import router as detection_router
 from app.collectors.binance import run_binance
 from app.collectors.coinbase import run_coinbase
 from app.collectors.kraken import run_kraken
@@ -27,6 +28,7 @@ app.include_router(alerts_router)
 app.include_router(blockchain_router)
 app.include_router(wallets_router)
 app.include_router(fundflow_router)
+app.include_router(detection_router)
 
 @app.get("/")
 async def root():
