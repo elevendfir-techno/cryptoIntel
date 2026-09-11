@@ -8,6 +8,7 @@ export default function App(){
   const [markets,setMarkets]=useState<Market[]>([]);
   const [trades,setTrades]=useState<any[]>([]);
   const [alerts,setAlerts]=useState<Alert[]>([]);
+  const [liveDetectionCount,setLiveDetectionCount]=useState(0);
   const [page,setPage]=useState("Overview");
   const [connected,setConnected]=useState(false);
 
@@ -19,6 +20,26 @@ export default function App(){
     ws.onmessage=e=>{const d=JSON.parse(e.data);setMarkets(d.markets||[]);setTrades(d.trades||[]);setAlerts(d.alerts||[])};
     return ()=>ws.close();
   },[]);
+  useEffect(()=>{
+  const loadDetectionCount = async () => {
+    try {
+      const response = await fetch(`${API}/api/detection`);
+      const data = await response.json();
+
+      if (response.ok) {
+        setLiveDetectionCount(data.total_detections || 0);
+      }
+    } catch {
+      // Keep previous count if API is temporarily unavailable
+    }
+  };
+
+  loadDetectionCount();
+
+  const interval = setInterval(loadDetectionCount, 10000);
+
+  return () => clearInterval(interval);
+},[]);
 
   const latest=useMemo(()=>{
     const map=new Map<string,Market>();
@@ -45,7 +66,11 @@ export default function App(){
         <section className="cards">
           <Card title="LIVE MARKETS" value={latest.length.toString()} sub="exchange feeds"/>
           <Card title="LIVE TRADES" value={trades.length.toString()} sub="recent stream"/>
-          <Card title="ALERTS" value={alerts.length.toString()} sub="detection events"/>
+          <Card
+  title="ALERTS"
+  value={String(liveDetectionCount)}
+  sub="live detection events"
+/>
           <Card title="NETWORKS" value="5+" sub="blockchain architecture"/>
         </section>
         <section className="panel"><h2>Global Market Feed</h2><MarketTable data={top}/></section>
