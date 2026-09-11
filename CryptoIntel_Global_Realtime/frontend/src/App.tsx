@@ -23,10 +23,9 @@ export default function App(){
   ws.onclose=()=>setConnected(false);
 
   ws.onmessage=e=>{
-    const d=JSON.parse(e.data);
-    setMarkets(d.markets||[]);
-    setAlerts(d.alerts||[]);
-  };
+  const d=JSON.parse(e.data);
+  setMarkets(d.markets||[]);
+};
 
   const loadTrades = async () => {
     try {
