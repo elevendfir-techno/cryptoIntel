@@ -51,26 +51,56 @@ export default function App(){
   };
 
 },[]);
-  useEffect(()=>{
-  const loadDetectionCount = async () => {
+  useEffect(() => {
+
+  const loadDetections = async () => {
+
     try {
-      const response = await fetch(`${API}/api/detection`);
+
+      const response = await fetch(
+        `${API}/api/detection`
+      );
+
       const data = await response.json();
 
       if (response.ok) {
-        setLiveDetectionCount(data.total_detections || 0);
+
+        setLiveDetectionCount(
+          data.total_detections || 0
+        );
+
+        const detectionAlerts = (
+          data.detections || []
+        ).map((d: any) => ({
+          type: d.type || "DETECTION",
+          severity: d.severity || "UNKNOWN",
+          message:
+            d.reason ||
+            d.message ||
+            "Detection event generated",
+          timestamp:
+            d.timestamp ||
+            new Date().toISOString()
+        }));
+
+        setAlerts(detectionAlerts);
       }
+
     } catch {
-      // Keep previous count if API is temporarily unavailable
+      // Keep previous detection data if API is temporarily unavailable
     }
   };
 
-  loadDetectionCount();
+  loadDetections();
 
-  const interval = setInterval(loadDetectionCount, 10000);
+  const interval = setInterval(
+    loadDetections,
+    10000
+  );
 
   return () => clearInterval(interval);
-},[]);
+
+}, []);
 
   const latest=useMemo(()=>{
     const map=new Map<string,Market>();
