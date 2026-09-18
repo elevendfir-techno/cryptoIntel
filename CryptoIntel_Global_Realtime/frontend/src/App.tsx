@@ -530,10 +530,10 @@ function Detection({
                     </span>
 
 
-                    <span>
-                      {d.data_source ||
-                        "Blockstream Esplora"}
-                    </span>
+                   <span>
+  {d.data_source ||
+    "Blockchain.com Blockchain Data API"}
+</span>
 
                   </div>
 
@@ -595,23 +595,30 @@ function WalletSearch(){
       }
 
       setR(data);
+
     }catch(e:any){
       setError(e.message || "Wallet lookup failed");
+
     }finally{
       setLoading(false);
     }
   };
 
   const btc=(sats:number)=>{
-    return (sats/100000000).toFixed(8)+" BTC";
+    return ((sats || 0)/100000000).toFixed(8)+" BTC";
   };
 
   return (
     <section className="panel">
+
       <h2>Bitcoin Wallet Investigation</h2>
-      <p>Investigate Bitcoin addresses using live blockchain data.</p>
+
+      <p>
+        Investigate Bitcoin addresses using live blockchain data.
+      </p>
 
       <div className="searchBox">
+
         <input
           value={a}
           onChange={e=>setA(e.target.value)}
@@ -628,16 +635,25 @@ function WalletSearch(){
         >
           {loading ? "Investigating..." : "Investigate"}
         </button>
+
       </div>
 
-      {error && <div className="empty">{error}</div>}
+      {error && (
+        <div className="empty">
+          {error}
+        </div>
+      )}
 
       {r && (
         <>
+
+          {/* SUMMARY CARDS */}
+
           <div className="cards">
+
             <Card
               title="NETWORK"
-              value={r.network}
+              value={r.network || "Bitcoin"}
               sub="Blockchain"
             />
 
@@ -649,7 +665,9 @@ function WalletSearch(){
 
             <Card
               title="TRANSACTIONS"
-              value={String(r.activity?.confirmed_transactions || 0)}
+              value={String(
+                r.activity?.confirmed_transactions || 0
+              )}
               sub="Confirmed transactions"
             />
 
@@ -658,9 +676,14 @@ function WalletSearch(){
               value="LIVE"
               sub="Blockchain.com data"
             />
+
           </div>
 
+
+          {/* WALLET DETAILS */}
+
           <section className="panel">
+
             <h2>Wallet Details</h2>
 
             <div className="row">
@@ -670,44 +693,68 @@ function WalletSearch(){
 
             <div className="row">
               <b>Balance</b>
-              <span>{btc(r.balance?.balance || 0)}</span>
+              <span>
+                {btc(r.balance?.balance || 0)}
+              </span>
             </div>
 
             <div className="row">
               <b>Total Received</b>
-              <span>{btc(r.balance?.funded || 0)}</span>
+              <span>
+                {btc(r.balance?.funded || 0)}
+              </span>
             </div>
 
             <div className="row">
               <b>Total Spent</b>
-              <span>{btc(r.balance?.spent || 0)}</span>
+              <span>
+                {btc(r.balance?.spent || 0)}
+              </span>
             </div>
+
           </section>
 
+
+          {/* WALLET ACTIVITY */}
+
           <section className="panel">
+
             <h2>Wallet Activity</h2>
 
             <div className="row">
               <b>Incoming Transactions</b>
-              <span>{r.activity?.funded_transactions || 0}</span>
+              <span>
+                {r.activity?.funded_transactions || 0}
+              </span>
             </div>
 
             <div className="row">
               <b>Outgoing Transactions</b>
-              <span>{r.activity?.spent_transactions || 0}</span>
+              <span>
+                {r.activity?.spent_transactions || 0}
+              </span>
             </div>
 
             <div className="row">
               <b>Confirmed Transactions</b>
-              <span>{r.activity?.confirmed_transactions || 0}</span>
+              <span>
+                {r.activity?.confirmed_transactions || 0}
+              </span>
             </div>
+
           </section>
 
+
+          {/* TRANSACTION HISTORY */}
+
           <section className="panel">
+
             <h2>Transaction History</h2>
 
             {r.transactions?.length ? (
+
               <div className="table">
+
                 <div className="thead">
                   <span>Transaction</span>
                   <span>Status</span>
@@ -715,44 +762,83 @@ function WalletSearch(){
                   <span>Timestamp</span>
                 </div>
 
-                {r.transactions.slice(0,20).map(
-                  (tx:any,i:number)=>(
-                    <div className="tr" key={tx.txid || i}>
-                      <span>
-                        {tx.txid
-                          ? tx.txid.slice(0,16)+"..."
-                          : "Unknown"}
-                      </span>
+                {r.transactions
+                  .slice(0,20)
+                  .map((tx:any,i:number)=>{
 
-                      <span className="liveDot">
-                        ● {tx.status?.confirmed
-                          ? "CONFIRMED"
-                          : "MEMPOOL"}
-                      </span>
+                    const txHash =
+                      tx.hash ||
+                      tx.txid ||
+                      "";
 
-                      <span>
-                        {tx.status?.block_height || "Pending"}
-                      </span>
+                    const blockHeight =
+                      tx.block_height ??
+                      tx.status?.block_height ??
+                      null;
 
-                      <span>
-                        {tx.status?.block_time
-                          ? new Date(
-                              tx.status.block_time * 1000
-                            ).toLocaleString()
-                          : "Pending"}
-                      </span>
-                    </div>
-                  )
-                )}
+                    const blockTime =
+                      tx.time ??
+                      tx.block_time ??
+                      tx.status?.block_time ??
+                      null;
+
+                    const confirmed =
+                      blockHeight !== null ||
+                      tx.confirmed === true ||
+                      tx.status?.confirmed === true;
+
+                    return (
+                      <div
+                        className="tr"
+                        key={txHash || i}
+                      >
+
+                        <span>
+                          {txHash
+                            ? txHash.slice(0,16)+"..."
+                            : "Unknown"}
+                        </span>
+
+                        <span className="liveDot">
+                          ●{" "}
+                          {confirmed
+                            ? "CONFIRMED"
+                            : "UNCONFIRMED"}
+                        </span>
+
+                        <span>
+                          {blockHeight !== null
+                            ? blockHeight
+                            : "Pending"}
+                        </span>
+
+                        <span>
+                          {blockTime
+                            ? new Date(
+                                blockTime * 1000
+                              ).toLocaleString()
+                            : "Unknown"}
+                        </span>
+
+                      </div>
+                    );
+                  })}
+
               </div>
+
             ) : (
+
               <div className="empty">
                 No transactions found.
               </div>
+
             )}
+
           </section>
+
         </>
       )}
+
     </section>
   );
 }
