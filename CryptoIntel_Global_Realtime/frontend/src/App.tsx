@@ -656,7 +656,7 @@ function WalletSearch(){
             <Card
               title="STATUS"
               value="LIVE"
-              sub="Blockstream data"
+              sub="Blockchain.com data"
             />
           </div>
 
@@ -758,50 +758,91 @@ function WalletSearch(){
 }
 function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
   const root=nodes.find(n=>n.hop===0) || nodes[0];
+
   const hop1=nodes.filter(n=>n.hop===1).slice(0,12);
   const hop2=nodes.filter(n=>n.hop===2).slice(0,24);
+
+  const positions: Record<string,{x:number;y:number}> = {};
+
+  if(root){
+    positions[root.id]={x:500,y:260};
+  }
+
+  hop1.forEach((node:any,i:number)=>{
+    const angle=(i/hop1.length)*Math.PI*2;
+
+    positions[node.id]={
+      x:500+170*Math.cos(angle),
+      y:260+150*Math.sin(angle)
+    };
+  });
+
+  hop2.forEach((node:any,i:number)=>{
+    const angle=(i/hop2.length)*Math.PI*2;
+
+    positions[node.id]={
+      x:500+350*Math.cos(angle),
+      y:260+210*Math.sin(angle)
+    };
+  });
 
   return (
     <section className="panel">
       <h2>Fund Flow Graph</h2>
-      <p>Visual representation of wallet relationships across traced hops.</p>
 
-      <div style={{
-        background:"#050505",
-        border:"1px solid #222",
-        borderRadius:"8px",
-        padding:"20px",
-        overflow:"auto"
-      }}>
-        <svg viewBox="0 0 1000 520" width="100%" height="520">
+      <p>
+        Visual representation of wallet relationships across traced hops.
+      </p>
+
+      <div
+        style={{
+          background:"#050505",
+          border:"1px solid #222",
+          borderRadius:"8px",
+          padding:"20px",
+          overflow:"auto"
+        }}
+      >
+
+        <svg
+          viewBox="0 0 1000 520"
+          width="100%"
+          height="520"
+        >
+
+          {/* CONNECTIONS */}
 
           {edges.slice(0,60).map((edge:any,i:number)=>{
-            const sourceIndex=nodes.findIndex(n=>n.id===edge.source);
-            const targetIndex=nodes.findIndex(n=>n.id===edge.target);
 
-            if(sourceIndex<0 || targetIndex<0) return null;
+            const source=positions[edge.source];
+            const target=positions[edge.target];
 
-            const sx=sourceIndex===0 ? 500 : 500+(sourceIndex%10)*35;
-            const sy=sourceIndex===0 ? 260 : 120+(sourceIndex%10)*30;
-
-            const tx=targetIndex===0 ? 500 : 500+(targetIndex%10)*35;
-            const ty=targetIndex===0 ? 260 : 120+(targetIndex%10)*30;
+            if(!source || !target){
+              return null;
+            }
 
             return (
-              <line
-                key={`${edge.txid}-${i}`}
-                x1={sx}
-                y1={sy}
-                x2={tx}
-                y2={ty}
-                stroke="#555"
-                strokeWidth="1"
-              />
+              <g key={`${edge.txid}-${i}`}>
+
+                <line
+                  x1={source.x}
+                  y1={source.y}
+                  x2={target.x}
+                  y2={target.y}
+                  stroke="#555"
+                  strokeWidth="1.5"
+                />
+
+              </g>
             );
           })}
 
+
+          {/* ROOT WALLET */}
+
           {root && (
             <g>
+
               <circle
                 cx="500"
                 cy="260"
@@ -810,9 +851,10 @@ function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
                 stroke="#fff"
                 strokeWidth="3"
               />
+
               <text
                 x="500"
-                y="264"
+                y="255"
                 textAnchor="middle"
                 fill="#fff"
                 fontSize="12"
@@ -820,28 +862,46 @@ function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
               >
                 ROOT
               </text>
+
+              <text
+                x="500"
+                y="270"
+                textAnchor="middle"
+                fill="#aaa"
+                fontSize="8"
+              >
+                {root.id.slice(0,8)}...
+              </text>
+
             </g>
           )}
 
-          {hop1.map((node:any,i:number)=>{
-            const angle=(i/hop1.length)*Math.PI*2;
 
-            const x=500+170*Math.cos(angle);
-            const y=260+150*Math.sin(angle);
+          {/* HOP 1 WALLETS */}
+
+          {hop1.map((node:any)=>{
+
+            const position=positions[node.id];
+
+            if(!position){
+              return null;
+            }
 
             return (
               <g key={node.id}>
+
                 <circle
-                  cx={x}
-                  cy={y}
+                  cx={position.x}
+                  cy={position.y}
                   r="24"
                   fill="#111"
                   stroke="#fff"
                   strokeWidth="1.5"
                 />
+
                 <text
-                  x={x}
-                  y={y+4}
+                  x={position.x}
+                  y={position.y-2}
                   textAnchor="middle"
                   fill="#fff"
                   fontSize="9"
@@ -849,53 +909,104 @@ function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
                 >
                   H1
                 </text>
+
+                <text
+                  x={position.x}
+                  y={position.y+9}
+                  textAnchor="middle"
+                  fill="#aaa"
+                  fontSize="7"
+                >
+                  {node.id.slice(0,6)}...
+                </text>
+
               </g>
             );
           })}
 
-          {hop2.map((node:any,i:number)=>{
-            const angle=(i/hop2.length)*Math.PI*2;
 
-            const x=500+350*Math.cos(angle);
-            const y=260+210*Math.sin(angle);
+          {/* HOP 2 WALLETS */}
+
+          {hop2.map((node:any)=>{
+
+            const position=positions[node.id];
+
+            if(!position){
+              return null;
+            }
 
             return (
               <g key={node.id}>
+
                 <circle
-                  cx={x}
-                  cy={y}
+                  cx={position.x}
+                  cy={position.y}
                   r="20"
                   fill="#111"
                   stroke="#777"
                   strokeWidth="1"
                 />
+
                 <text
-                  x={x}
-                  y={y+4}
+                  x={position.x}
+                  y={position.y-1}
                   textAnchor="middle"
                   fill="#aaa"
                   fontSize="8"
                 >
                   H2
                 </text>
+
+                <text
+                  x={position.x}
+                  y={position.y+9}
+                  textAnchor="middle"
+                  fill="#777"
+                  fontSize="6"
+                >
+                  {node.id.slice(0,6)}...
+                </text>
+
               </g>
             );
           })}
 
         </svg>
+
       </div>
 
-      <div style={{
-        display:"flex",
-        gap:"20px",
-        marginTop:"12px",
-        color:"#777",
-        fontSize:"10px"
-      }}>
-        <span>ROOT: {root?.id || "—"}</span>
-        <span>HOP 1: {hop1.length}</span>
-        <span>HOP 2: {hop2.length}</span>
+
+      {/* GRAPH SUMMARY */}
+
+      <div
+        style={{
+          display:"flex",
+          gap:"20px",
+          marginTop:"12px",
+          color:"#777",
+          fontSize:"10px",
+          flexWrap:"wrap"
+        }}
+      >
+
+        <span>
+          ROOT: {root?.id || "—"}
+        </span>
+
+        <span>
+          HOP 1: {hop1.length}
+        </span>
+
+        <span>
+          HOP 2: {hop2.length}
+        </span>
+
+        <span>
+          EDGES: {edges.length}
+        </span>
+
       </div>
+
     </section>
   );
 }
