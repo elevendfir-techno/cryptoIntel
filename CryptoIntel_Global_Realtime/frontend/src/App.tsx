@@ -1380,15 +1380,39 @@ function Blockchain(){
           </div>
 
           {blocks.map((b,i)=>(
-            <div className="tr" key={i}>
-              <b>{b.height}</b>
-              <span>{b.id.slice(0,18)}...</span>
-              <span>{b.tx_count}</span>
-              <span>{b.size?.toLocaleString()}</span>
-              <span>{b.weight?.toLocaleString()}</span>
-              <span className="liveDot">● LIVE</span>
-            </div>
-          ))}
+  <div className="tr" key={i}>
+
+    <b>
+      {b.height ?? "—"}
+    </b>
+
+    <span
+      title={b.hash || ""}
+      style={{fontFamily:"monospace"}}
+    >
+      {b.hash
+        ? b.hash.slice(0,18) + "..."
+        : "—"}
+    </span>
+
+    <span>
+      {b.txIndexes?.length ?? 0}
+    </span>
+
+    <span>
+      —
+    </span>
+
+    <span>
+      —
+    </span>
+
+    <span className="liveDot">
+      ● LIVE
+    </span>
+
+  </div>
+))}
         </div>
       )}
     </section>
