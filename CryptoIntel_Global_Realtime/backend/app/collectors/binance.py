@@ -52,7 +52,7 @@ async def run_binance():
                         "exchange": "Binance",
                         "price": float(data["c"]),
                         "volume": float(data["v"]),
-                        "change24h": float(data["P"]),
+                        "change24h": float(data.get("P", 0)),
                         "timestamp": datetime.now(
                             timezone.utc
                         ).isoformat()

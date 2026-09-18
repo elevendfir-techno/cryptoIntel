@@ -3,7 +3,7 @@ import httpx
 
 router = APIRouter(prefix="/api/wallets", tags=["wallets"])
 
-BITCOIN_API = "https://blockstream.info/api"
+BITCOIN_API = "https://blockchain.info"
 
 
 @router.get("/{address}")
@@ -17,33 +17,51 @@ async def wallet(
             detail="Currently only Bitcoin wallet investigation is live."
         )
 
+    # Basic validation
+    if address.startswith("0x"):
+        raise HTTPException(
+            status_code=400,
+            detail="Ethereum-style address detected. Please enter a Bitcoin address."
+        )
+
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=20) as client:
 
-            # Get wallet/address information
-            address_response = await client.get(
-                f"{BITCOIN_API}/address/{address}"
+            response = await client.get(
+                f"{BITCOIN_API}/rawaddr/{address}"
             )
 
-            # Get transaction history
-            tx_response = await client.get(
-                f"{BITCOIN_API}/address/{address}/txs"
-            )
-
-        if address_response.status_code == 404:
+        if response.status_code == 404:
             raise HTTPException(
                 status_code=404,
                 detail="Bitcoin address not found."
             )
 
-        address_response.raise_for_status()
-        tx_response.raise_for_status()
+        response.raise_for_status()
 
-        details = address_response.json()
-        transactions = tx_response.json()
+        details = response.json()
 
-        chain_stats = details.get("chain_stats", {})
-        mempool_stats = details.get("mempool_stats", {})
+        # Blockchain.com returns balance values in satoshis
+        total_received = int(
+            details.get("total_received", 0)
+        )
+
+        total_sent = int(
+            details.get("total_sent", 0)
+        )
+
+        final_balance = int(
+            details.get("final_balance", 0)
+        )
+
+        transaction_count = int(
+            details.get("n_tx", 0)
+        )
+
+        transactions = details.get(
+            "txs",
+            []
+        )
 
         return {
             "address": address,
@@ -51,35 +69,22 @@ async def wallet(
             "status": "LIVE",
 
             "balance": {
-                "funded": chain_stats.get("funded_txo_sum", 0),
-                "spent": chain_stats.get("spent_txo_sum", 0),
-                "balance": (
-                    chain_stats.get("funded_txo_sum", 0)
-                    - chain_stats.get("spent_txo_sum", 0)
-                )
+                "funded": total_received,
+                "spent": total_sent,
+                "balance": final_balance
             },
 
             "activity": {
-                "funded_transactions": chain_stats.get(
-                    "funded_txo_count", 0
-                ),
-                "spent_transactions": chain_stats.get(
-                    "spent_txo_count", 0
-                ),
-                "confirmed_transactions": chain_stats.get(
-                    "tx_count", 0
-                ),
-                "mempool_funded": mempool_stats.get(
-                    "funded_txo_count", 0
-                ),
-                "mempool_spent": mempool_stats.get(
-                    "spent_txo_count", 0
-                )
+                "confirmed_transactions": transaction_count,
+                "funded_transactions": None,
+                "spent_transactions": None,
+                "mempool_funded": None,
+                "mempool_spent": None
             },
 
             "transactions": transactions,
 
-            "source": "Blockstream Esplora API"
+            "source": "Blockchain.com Blockchain Data API"
         }
 
     except HTTPException:

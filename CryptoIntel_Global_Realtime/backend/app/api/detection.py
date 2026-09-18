@@ -3,9 +3,12 @@ import httpx
 
 from app.services.state import state
 
-router = APIRouter(prefix="/api/detection", tags=["Detection"])
+router = APIRouter(
+    prefix="/api/detection",
+    tags=["Detection"]
+)
 
-BITCOIN_API = "https://blockstream.info/api"
+BITCOIN_API = "https://blockchain.info"
 
 # Detection thresholds
 PRICE_ANOMALY_PERCENT = 8
@@ -14,126 +17,225 @@ RAPID_ACTIVITY_TRADES = 50
 EXCHANGE_SPREAD_PERCENT = 2
 LARGE_TRANSFER_BTC = 10
 
+# Keep blockchain requests controlled
+BITCOIN_BLOCKS_TO_CHECK = 1
+
 
 async def get_bitcoin_live_detections():
-    """
-    Inspect recent Bitcoin blocks using Blockstream Esplora.
-
-    This uses real public blockchain data.
-    No demo transactions or generated wallet addresses are used.
-    """
 
     detections = []
 
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
 
-            # Get recent Bitcoin blocks
-            blocks_response = await client.get(
-                f"{BITCOIN_API}/blocks"
+        async with httpx.AsyncClient(
+            timeout=20
+        ) as client:
+
+            # -------------------------------------------------
+            # GET LATEST BITCOIN BLOCK
+            # -------------------------------------------------
+
+            latest_response = await client.get(
+                f"{BITCOIN_API}/latestblock"
             )
-            blocks_response.raise_for_status()
 
-            blocks = blocks_response.json()[:3]
+            latest_response.raise_for_status()
 
-            for block in blocks:
+            latest_block = latest_response.json()
 
-                block_hash = block.get("id")
+            block_hash = latest_block.get(
+                "hash"
+            )
 
-                if not block_hash:
-                    continue
+            block_height = latest_block.get(
+                "height"
+            )
 
-                # Get transactions from the recent block
-                tx_response = await client.get(
-                    f"{BITCOIN_API}/block/{block_hash}/txs"
+            if not block_hash:
+                return detections
+
+            # -------------------------------------------------
+            # GET FULL BLOCK
+            # -------------------------------------------------
+
+            block_response = await client.get(
+                f"{BITCOIN_API}/rawblock/{block_hash}"
+            )
+
+            block_response.raise_for_status()
+
+            block = block_response.json()
+
+            transactions = block.get(
+                "tx",
+                []
+            )
+
+            # -------------------------------------------------
+            # ANALYSE REAL BLOCKCHAIN TRANSACTIONS
+            # -------------------------------------------------
+
+            for tx in transactions:
+
+                txid = tx.get(
+                    "hash",
+                    "UNKNOWN"
                 )
-                tx_response.raise_for_status()
 
-                transactions = tx_response.json()
+                total_output_sats = 0
+                largest_output_sats = 0
 
-                for tx in transactions:
+                # Blockchain.com transaction outputs
+                # are stored inside "out"
 
-                    txid = tx.get("txid", "UNKNOWN")
+                for output in tx.get(
+                    "out",
+                    []
+                ):
 
-                    total_output_sats = 0
-                    largest_output_sats = 0
+                    value = output.get(
+                        "value",
+                        0
+                    )
 
-                    for output in tx.get("vout", []):
+                    try:
+                        value = int(value)
+                    except (
+                        TypeError,
+                        ValueError
+                    ):
+                        continue
 
-                        value = output.get("value", 0)
+                    total_output_sats += value
 
-                        try:
-                            value = int(value)
-                        except (TypeError, ValueError):
-                            continue
+                    largest_output_sats = max(
+                        largest_output_sats,
+                        value
+                    )
 
-                        total_output_sats += value
-                        largest_output_sats = max(
-                            largest_output_sats,
-                            value
-                        )
+                total_btc = (
+                    total_output_sats
+                    / 100_000_000
+                )
 
-                    total_btc = total_output_sats / 100_000_000
-                    largest_btc = largest_output_sats / 100_000_000
+                largest_btc = (
+                    largest_output_sats
+                    / 100_000_000
+                )
 
-                    # =================================================
-                    # LARGE BITCOIN TRANSFER
-                    # =================================================
+                # =================================================
+                # LARGE BITCOIN TRANSFER
+                # =================================================
 
-                    if largest_btc >= LARGE_TRANSFER_BTC:
+                if largest_btc >= LARGE_TRANSFER_BTC:
 
-                        detections.append({
-                            "type": "LARGE TRANSFER",
-                            "severity": (
-                                "HIGH"
-                                if largest_btc >= 100
-                                else "MEDIUM"
-                            ),
-                            "asset": "BTC",
-                            "source": "Bitcoin Blockchain",
-                            "value": f"{largest_btc:.8f} BTC",
-                            "reason": (
-                                "Large Bitcoin transaction output "
-                                "detected in a recent block."
-                            ),
-                            "txid": txid,
-                            "block": block_hash,
-                            "network": "Bitcoin",
-                            "data_source": "Blockstream Esplora"
-                        })
+                    detections.append({
 
-                    # =================================================
-                    # VERY LARGE TRANSACTION
-                    # =================================================
+                        "type":
+                            "LARGE TRANSFER",
 
-                    if total_btc >= 100:
+                        "severity": (
+                            "HIGH"
+                            if largest_btc >= 100
+                            else "MEDIUM"
+                        ),
 
-                        detections.append({
-                            "type": "HIGH VALUE TRANSACTION",
-                            "severity": "HIGH",
-                            "asset": "BTC",
-                            "source": "Bitcoin Blockchain",
-                            "value": f"{total_btc:.8f} BTC",
-                            "reason": (
-                                "Transaction contains a very large "
-                                "aggregate Bitcoin output value."
-                            ),
-                            "txid": txid,
-                            "block": block_hash,
-                            "network": "Bitcoin",
-                            "data_source": "Blockstream Esplora"
-                        })
+                        "asset": "BTC",
+
+                        "source":
+                            "Bitcoin Blockchain",
+
+                        "value":
+                            f"{largest_btc:.8f} BTC",
+
+                        "reason": (
+                            "Large Bitcoin transaction "
+                            "output detected in the "
+                            "latest Bitcoin block."
+                        ),
+
+                        "txid": txid,
+
+                        "block": block_hash,
+
+                        "block_height":
+                            block_height,
+
+                        "network":
+                            "Bitcoin",
+
+                        "data_source":
+                            "Blockchain.com"
+                    })
+
+                # =================================================
+                # VERY LARGE TRANSACTION
+                # =================================================
+
+                if total_btc >= 100:
+
+                    detections.append({
+
+                        "type":
+                            "HIGH VALUE TRANSACTION",
+
+                        "severity":
+                            "HIGH",
+
+                        "asset":
+                            "BTC",
+
+                        "source":
+                            "Bitcoin Blockchain",
+
+                        "value":
+                            f"{total_btc:.8f} BTC",
+
+                        "reason": (
+                            "Transaction contains a "
+                            "very large aggregate "
+                            "Bitcoin output value."
+                        ),
+
+                        "txid": txid,
+
+                        "block": block_hash,
+
+                        "block_height":
+                            block_height,
+
+                        "network":
+                            "Bitcoin",
+
+                        "data_source":
+                            "Blockchain.com"
+                    })
 
     except Exception as e:
 
-        # Do not crash the complete detection endpoint
         detections.append({
-            "type": "BLOCKCHAIN DATA STATUS",
-            "severity": "LOW",
-            "asset": "BTC",
-            "source": "Blockstream Esplora",
-            "value": "UNAVAILABLE",
-            "reason": f"Live Bitcoin detection temporarily unavailable: {str(e)}"
+
+            "type":
+                "BLOCKCHAIN DATA STATUS",
+
+            "severity":
+                "LOW",
+
+            "asset":
+                "BTC",
+
+            "source":
+                "Blockchain.com",
+
+            "value":
+                "UNAVAILABLE",
+
+            "reason":
+                (
+                    "Live Bitcoin detection "
+                    "temporarily unavailable: "
+                    f"{str(e)}"
+                )
         })
 
     return detections
@@ -151,35 +253,54 @@ async def detection():
     for market in state.market.values():
 
         try:
+
             change = float(
-                market.get("change24h", 0)
+                market.get(
+                    "change24h",
+                    0
+                )
             )
 
             if abs(change) >= PRICE_ANOMALY_PERCENT:
 
                 detections.append({
-                    "type": "PRICE ANOMALY",
+
+                    "type":
+                        "PRICE ANOMALY",
+
                     "severity": (
                         "HIGH"
                         if abs(change) >= 15
                         else "MEDIUM"
                     ),
-                    "asset": market.get(
-                        "symbol",
-                        "UNKNOWN"
-                    ),
-                    "source": market.get(
-                        "exchange",
-                        "UNKNOWN"
-                    ),
-                    "value": f"{change:.2f}%",
-                    "reason": (
-                        "Unusual 24-hour price movement "
-                        "detected."
-                    )
+
+                    "asset":
+                        market.get(
+                            "symbol",
+                            "UNKNOWN"
+                        ),
+
+                    "source":
+                        market.get(
+                            "exchange",
+                            "UNKNOWN"
+                        ),
+
+                    "value":
+                        f"{change:.2f}%",
+
+                    "reason":
+                        (
+                            "Unusual 24-hour "
+                            "price movement "
+                            "detected."
+                        )
                 })
 
-        except (TypeError, ValueError):
+        except (
+            TypeError,
+            ValueError
+        ):
             continue
 
     # =========================================================
@@ -189,51 +310,86 @@ async def detection():
     for market in state.market.values():
 
         try:
+
             volume = float(
-                market.get("volume", 0)
+                market.get(
+                    "volume",
+                    0
+                )
             )
 
             if volume >= VOLUME_SPIKE:
 
                 detections.append({
-                    "type": "VOLUME SPIKE",
-                    "severity": "MEDIUM",
-                    "asset": market.get(
-                        "symbol",
-                        "UNKNOWN"
-                    ),
-                    "source": market.get(
-                        "exchange",
-                        "UNKNOWN"
-                    ),
-                    "value": f"{volume:,.2f}",
-                    "reason": (
-                        "Unusually high 24-hour "
-                        "trading volume detected."
-                    )
+
+                    "type":
+                        "VOLUME SPIKE",
+
+                    "severity":
+                        "MEDIUM",
+
+                    "asset":
+                        market.get(
+                            "symbol",
+                            "UNKNOWN"
+                        ),
+
+                    "source":
+                        market.get(
+                            "exchange",
+                            "UNKNOWN"
+                        ),
+
+                    "value":
+                        f"{volume:,.2f}",
+
+                    "reason":
+                        (
+                            "Unusually high "
+                            "24-hour trading "
+                            "volume detected."
+                        )
                 })
 
-        except (TypeError, ValueError):
+        except (
+            TypeError,
+            ValueError
+        ):
             continue
 
     # =========================================================
     # 3. RAPID MARKET ACTIVITY
     # =========================================================
 
-    trade_count = len(state.trades)
+    trade_count = len(
+        state.trades
+    )
 
     if trade_count >= RAPID_ACTIVITY_TRADES:
 
         detections.append({
-            "type": "RAPID ACTIVITY",
-            "severity": "MEDIUM",
-            "asset": "MULTIPLE",
-            "source": "Live Market Feed",
-            "value": f"{trade_count} trades",
-            "reason": (
-                "High-frequency trading activity "
-                "detected in the live feed."
-            )
+
+            "type":
+                "RAPID ACTIVITY",
+
+            "severity":
+                "MEDIUM",
+
+            "asset":
+                "MULTIPLE",
+
+            "source":
+                "Live Market Feed",
+
+            "value":
+                f"{trade_count} trades",
+
+            "reason":
+                (
+                    "High-frequency trading "
+                    "activity detected in "
+                    "the live feed."
+                )
         })
 
     # =========================================================
@@ -247,7 +403,10 @@ async def detection():
         try:
 
             symbol = (
-                market.get("symbol", "")
+                market.get(
+                    "symbol",
+                    ""
+                )
                 .upper()
                 .replace("-", "")
                 .replace("_", "")
@@ -255,16 +414,22 @@ async def detection():
             )
 
             if symbol.endswith("USDT"):
+
                 asset = symbol[:-4]
 
             elif symbol.endswith("USD"):
+
                 asset = symbol[:-3]
 
             else:
+
                 asset = symbol
 
             price = float(
-                market.get("price", 0)
+                market.get(
+                    "price",
+                    0
+                )
             )
 
             if not asset or price <= 0:
@@ -274,14 +439,21 @@ async def detection():
                 asset,
                 []
             ).append({
-                "exchange": market.get(
-                    "exchange",
-                    "UNKNOWN"
-                ),
-                "price": price
+
+                "exchange":
+                    market.get(
+                        "exchange",
+                        "UNKNOWN"
+                    ),
+
+                "price":
+                    price
             })
 
-        except (TypeError, ValueError):
+        except (
+            TypeError,
+            ValueError
+        ):
             continue
 
     for asset, prices in asset_prices.items():
@@ -303,32 +475,47 @@ async def detection():
             continue
 
         spread = (
+
             (
                 highest["price"]
                 - lowest["price"]
             )
+
             / lowest["price"]
+
         ) * 100
 
         if spread >= EXCHANGE_SPREAD_PERCENT:
 
             detections.append({
-                "type": "EXCHANGE SPREAD",
+
+                "type":
+                    "EXCHANGE SPREAD",
+
                 "severity": (
                     "HIGH"
                     if spread >= 5
                     else "MEDIUM"
                 ),
-                "asset": asset,
-                "source": (
-                    f'{lowest["exchange"]} → '
-                    f'{highest["exchange"]}'
-                ),
-                "value": f"{spread:.2f}%",
-                "reason": (
-                    "Significant price difference "
-                    "detected between live exchanges."
-                )
+
+                "asset":
+                    asset,
+
+                "source":
+                    (
+                        f'{lowest["exchange"]} → '
+                        f'{highest["exchange"]}'
+                    ),
+
+                "value":
+                    f"{spread:.2f}%",
+
+                "reason":
+                    (
+                        "Significant price "
+                        "difference detected "
+                        "between live exchanges."
+                    )
             })
 
     # =========================================================
@@ -348,28 +535,55 @@ async def detection():
     # =========================================================
 
     return {
-        "status": "LIVE",
-        "total_detections": len(detections),
-        "detections": detections[:100],
 
-        "source": (
-            "Live exchange market feeds + "
-            "Bitcoin blockchain"
-        ),
+        "status":
+            "LIVE",
+
+        "total_detections":
+            len(detections),
+
+        "detections":
+            detections[:100],
+
+        "source":
+            (
+                "Live exchange market feeds + "
+                "Bitcoin blockchain"
+            ),
 
         "rules": {
-            "price_anomaly": "ACTIVE",
-            "volume_spike": "ACTIVE",
-            "rapid_activity": "ACTIVE",
-            "exchange_spread": "ACTIVE",
-            "large_transfer": "ACTIVE",
-            "high_value_transaction": "ACTIVE",
-            "multi_hop_movement": "BLOCKCHAIN ANALYSIS READY"
+
+            "price_anomaly":
+                "ACTIVE",
+
+            "volume_spike":
+                "ACTIVE",
+
+            "rapid_activity":
+                "ACTIVE",
+
+            "exchange_spread":
+                "ACTIVE",
+
+            "large_transfer":
+                "ACTIVE",
+
+            "high_value_transaction":
+                "ACTIVE",
+
+            "multi_hop_movement":
+                "BLOCKCHAIN ANALYSIS READY"
         },
 
         "blockchain": {
-            "network": "Bitcoin",
-            "status": "LIVE",
-            "provider": "Blockstream Esplora"
+
+            "network":
+                "Bitcoin",
+
+            "status":
+                "LIVE",
+
+            "provider":
+                "Blockchain.com"
         }
     }
