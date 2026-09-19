@@ -1336,113 +1336,196 @@ function WalletSearch() {
 
 </section>
 
-          {/* ERC-20 */}
+        {/* ERC-20 */}
 
-          <section className="panel">
+<section className="panel erc-panel">
 
-            <h2>
-              ERC-20 Token Transfers
-            </h2>
+  <h2>
+    ERC-20 Token Transfers
+  </h2>
 
-            {tokens.length ? (
+  {tokens.length ? (
 
-              <div className="table">
+    <div className="table">
 
-                <div className="thead">
-                  <span>Direction</span>
-                  <span>Token</span>
-                  <span>Symbol</span>
-                  <span>From</span>
-                  <span>To</span>
-                  <span>Value</span>
-                </div>
+      <div className="thead">
+        <span>Direction</span>
+        <span>Token</span>
+        <span>Symbol</span>
+        <span>Amount</span>
+        <span>From</span>
+        <span>To</span>
+        <span>Transaction</span>
+      </div>
 
-                {tokens
-                  .slice(0, 50)
-                  .map(
-                    (tx: any, i: number) => (
+      {tokens
+        .slice(0, 50)
+        .map((tx: any, i: number) => {
 
-                      <div
-                        className="tr"
-                        key={
-                          tx.hash || i
-                        }
-                      >
+          const decimals = Number(
+            tx.decimals ?? 18
+          );
 
-                        <span>
-                          <b
-                            className={
-                              tx.direction ===
-                              "INCOMING"
-                                ? "up"
-                                : "down"
-                            }
-                          >
-                            {tx.direction ||
-                              "UNKNOWN"}
-                          </b>
-                        </span>
+          const rawValue = String(
+            tx.value ?? "0"
+          );
 
-                        <span>
-                          {tx.token ||
-                            "Unknown"}
-                        </span>
+          let amount = "0";
 
-                        <b>
-                          {tx.symbol ||
-                            "—"}
-                        </b>
+          try {
+            if (
+              /^\d+$/.test(rawValue) &&
+              decimals >= 0 &&
+              decimals <= 36
+            ) {
+              const value =
+                BigInt(rawValue);
 
-                        <span
-                          title={tx.from}
-                          style={{
-                            fontFamily:
-                              "monospace"
-                          }}
-                        >
-                          {tx.from
-                            ? tx.from.slice(
-                                0,
-                                8
-                              ) +
-                              "..." +
-                              tx.from.slice(-6)
-                            : "—"}
-                        </span>
+              const divisor =
+                10n ** BigInt(decimals);
 
-                        <span
-                          title={tx.to}
-                          style={{
-                            fontFamily:
-                              "monospace"
-                          }}
-                        >
-                          {tx.to
-                            ? tx.to.slice(
-                                0,
-                                8
-                              ) +
-                              "..." +
-                              tx.to.slice(-6)
-                            : "—"}
-                        </span>
+              const whole =
+                value / divisor;
 
-                        <span>
-                          {tx.value ?? "0"}
-                        </span>
+              const fraction =
+                value % divisor;
 
-                      </div>
-
+              if (fraction === 0n) {
+                amount =
+                  whole.toString();
+              } else {
+                const fractionText =
+                  fraction
+                    .toString()
+                    .padStart(
+                      decimals,
+                      "0"
                     )
-                  )}
+                    .replace(
+                      /0+$/,
+                      ""
+                    );
 
-              </div>
+                amount =
+                  `${whole}.${fractionText}`;
+              }
+            } else {
+              amount = rawValue;
+            }
+          } catch {
+            amount = rawValue;
+          }
 
-            ) : (
+          const direction =
+            tx.direction === "INCOMING"
+              ? "INCOMING"
+              : tx.direction === "OUTGOING"
+              ? "OUTGOING"
+              : "UNKNOWN";
 
-              <div className="empty">
-                No ERC-20 token transfers found.
-              </div>
+          const shortAddress = (
+            value: string
+          ) =>
+            value
+              ? value.slice(0, 8) +
+                "..." +
+                value.slice(-6)
+              : "—";
+
+          const shortHash = (
+            value: string
+          ) =>
+            value
+              ? value.slice(0, 10) +
+                "..." +
+                value.slice(-8)
+              : "—";
+
+          return (
+            <div
+              className="tr"
+              key={
+                tx.hash ||
+                `${tx.token_address}-${i}`
+              }
+            >
+
+              <span>
+                <b
+                  className={
+                    direction === "INCOMING"
+                      ? "up"
+                      : direction === "OUTGOING"
+                      ? "down"
+                      : ""
+                  }
+                >
+                  {direction}
+                </b>
+              </span>
+
+              <span>
+                {tx.token || "Unknown"}
+              </span>
+
+              <b>
+                {tx.symbol || "—"}
+              </b>
+
+              <span
+                title={`Raw value: ${rawValue}`}
+                style={{
+                  fontFamily: "monospace"
+                }}
+              >
+                {amount}{" "}
+                {tx.symbol || ""}
+              </span>
+
+              <span
+                title={tx.from || ""}
+                style={{
+                  fontFamily: "monospace"
+                }}
+              >
+                {shortAddress(
+                  tx.from
+                )}
+              </span>
+
+              <span
+                title={tx.to || ""}
+                style={{
+                  fontFamily: "monospace"
+                }}
+              >
+                {shortAddress(
+                  tx.to
+                )}
+              </span>
+
+              <span
+                title={tx.hash || ""}
+                style={{
+                  fontFamily: "monospace"
+                }}
+              >
+                {shortHash(
+                  tx.hash
+                )}
+              </span>
+
+            </div>
+          );
+        })}
+
+    </div>
+
+  ) : (
+
+    <div className="empty">
+      No ERC-20 token transfers found.
+    </div>
 
             )}
 
