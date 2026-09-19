@@ -224,7 +224,7 @@ async def refresh_blocks():
         print(
             f"Bitcoin block refresh error: {e}"
         )
-        
+
 # =========================================================
 # BACKGROUND BLOCK REFRESH
 # =========================================================
@@ -325,6 +325,66 @@ async def bitcoin_blocks():
 
 
 # =========================================================
+# BITCOIN BLOCK DETAILS
+# =========================================================
+
+@router.get("/bitcoin/block/{block_hash}")
+async def bitcoin_block_details(block_hash: str):
+
+    try:
+
+        async with httpx.AsyncClient(
+            timeout=20,
+            headers={
+                "User-Agent": "CryptoIntel/1.0"
+            }
+        ) as client:
+
+            response = await client.get(
+                f"{MEMPOOL_API}/block/{block_hash}"
+            )
+
+        if response.status_code == 404:
+            raise HTTPException(
+                status_code=404,
+                detail="Bitcoin block not found."
+            )
+
+        response.raise_for_status()
+
+        block = response.json()
+
+        return {
+            "network": "Bitcoin",
+            "status": "LIVE",
+            "block": {
+                "hash": block.get("id"),
+                "height": block.get("height"),
+                "timestamp": block.get("timestamp"),
+                "tx_count": block.get("tx_count", 0),
+                "size": block.get("size", 0),
+                "weight": block.get("weight", 0),
+                "version": block.get("version"),
+                "merkle_root": block.get("merkle_root"),
+                "previous_block_hash": block.get(
+                    "previousblockhash"
+                ),
+                "nonce": block.get("nonce"),
+                "bits": block.get("bits"),
+                "difficulty": block.get("difficulty")
+            },
+            "source": "Mempool.space Bitcoin API"
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=502,
+            detail=f"Block lookup failed: {str(e)}"
+        )
 # BITCOIN TRANSACTION
 # =========================================================
 

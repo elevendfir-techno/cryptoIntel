@@ -1342,6 +1342,9 @@ function Blockchain(){
   const [blocks,setBlocks]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
+  const [selectedBlock,setSelectedBlock]=useState<any>(null);
+  const [detailsLoading,setDetailsLoading]=useState(false);
+  const [detailsError,setDetailsError]=useState("");
 
   useEffect(()=>{
     fetch(`${API}/api/blockchain/bitcoin/blocks`)
@@ -1358,6 +1361,37 @@ function Blockchain(){
         setLoading(false);
       });
   },[]);
+
+  const openBlockDetails = async (block:any) => {
+    if(!block?.hash) return;
+
+    setSelectedBlock(null);
+    setDetailsError("");
+    setDetailsLoading(true);
+
+    try {
+      const response = await fetch(
+        `${API}/api/blockchain/bitcoin/block/${encodeURIComponent(block.hash)}`
+      );
+
+      const data = await response.json();
+
+      if(!response.ok){
+        throw new Error(data.detail || "Block details unavailable");
+      }
+
+      setSelectedBlock(data.block || null);
+    } catch(e:any) {
+      setDetailsError(e.message || "Block details unavailable");
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const formatTime = (timestamp:any) => {
+    if(!timestamp) return "—";
+    return new Date(Number(timestamp) * 1000).toLocaleString();
+  };
 
   return (
     <section className="panel">
@@ -1380,43 +1414,206 @@ function Blockchain(){
           </div>
 
           {blocks.map((b,i)=>(
-  <div className="tr" key={i}>
+            <div
+              className="tr"
+              key={i}
+              onClick={()=>openBlockDetails(b)}
+              style={{
+                cursor: b.hash ? "pointer" : "default"
+              }}
+              title={b.hash ? "Click to view block details" : ""}
+            >
 
-    <b>
-      {b.height ?? "—"}
-    </b>
+              <b>
+                {b.height ?? "—"}
+              </b>
 
-    <span
-      title={b.hash || ""}
-      style={{fontFamily:"monospace"}}
-    >
-      {b.hash
-        ? b.hash.slice(0,18) + "..."
-        : "—"}
-    </span>
+              <span
+                title={b.hash || ""}
+                style={{fontFamily:"monospace"}}
+              >
+                {b.hash
+                  ? b.hash.slice(0,18) + "..."
+                  : "—"}
+              </span>
 
-    <span>
-  {b.n_tx ?? 0}
-</span>
+              <span>
+                {b.n_tx ?? 0}
+              </span>
 
-<span>
-  {b.size
-    ? b.size.toLocaleString()
-    : "—"}
-</span>
+              <span>
+                {b.size
+                  ? b.size.toLocaleString()
+                  : "—"}
+              </span>
 
-<span>
-  {b.weight
-    ? b.weight.toLocaleString()
-    : "—"}
-</span>
-    <span className="liveDot">
-      ● LIVE
-    </span>
+              <span>
+                {b.weight
+                  ? b.weight.toLocaleString()
+                  : "—"}
+              </span>
 
-  </div>
-))}
+              <span className="liveDot">
+                ● LIVE
+              </span>
+
+            </div>
+          ))}
         </div>
+      )}
+
+      {detailsLoading && (
+        <section className="panel">
+          <h2>Block Details</h2>
+          <div className="empty">Loading block details...</div>
+        </section>
+      )}
+
+      {detailsError && (
+        <section className="panel">
+          <h2>Block Details</h2>
+          <div className="empty">{detailsError}</div>
+        </section>
+      )}
+
+      {selectedBlock && (
+        <section className="panel">
+          <div
+            style={{
+              display:"flex",
+              justifyContent:"space-between",
+              alignItems:"center",
+              gap:"12px"
+            }}
+          >
+            <div>
+              <h2>Block Details</h2>
+              <p>Live Bitcoin block information</p>
+            </div>
+
+            <button
+              className="primary"
+              onClick={()=>setSelectedBlock(null)}
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="cards">
+            <Card
+              title="HEIGHT"
+              value={String(selectedBlock.height ?? "—")}
+              sub="Block height"
+            />
+
+            <Card
+              title="TRANSACTIONS"
+              value={String(selectedBlock.tx_count ?? 0)}
+              sub="Transactions in block"
+            />
+
+            <Card
+              title="SIZE"
+              value={
+                selectedBlock.size
+                  ? selectedBlock.size.toLocaleString()
+                  : "—"
+              }
+              sub="Bytes"
+            />
+
+            <Card
+              title="WEIGHT"
+              value={
+                selectedBlock.weight
+                  ? selectedBlock.weight.toLocaleString()
+                  : "—"
+              }
+              sub="Block weight"
+            />
+          </div>
+
+          <section className="panel">
+            <h2>Block Information</h2>
+
+            <div className="row">
+              <b>Full Block Hash</b>
+              <span
+                title={selectedBlock.hash || ""}
+                style={{
+                  fontFamily:"monospace",
+                  wordBreak:"break-all"
+                }}
+              >
+                {selectedBlock.hash || "—"}
+              </span>
+            </div>
+
+            <div className="row">
+              <b>Timestamp</b>
+              <span>{formatTime(selectedBlock.timestamp)}</span>
+            </div>
+
+            <div className="row">
+              <b>Version</b>
+              <span>{selectedBlock.version ?? "—"}</span>
+            </div>
+
+            <div className="row">
+              <b>Merkle Root</b>
+              <span
+                style={{
+                  fontFamily:"monospace",
+                  wordBreak:"break-all"
+                }}
+              >
+                {selectedBlock.merkle_root || "—"}
+              </span>
+            </div>
+
+            <div className="row">
+              <b>Previous Block Hash</b>
+              <span
+                style={{
+                  fontFamily:"monospace",
+                  wordBreak:"break-all"
+                }}
+              >
+                {selectedBlock.previous_block_hash || "—"}
+              </span>
+            </div>
+
+            <div className="row">
+              <b>Nonce</b>
+              <span>{selectedBlock.nonce ?? "—"}</span>
+            </div>
+
+            <div className="row">
+              <b>Bits</b>
+              <span>{selectedBlock.bits ?? "—"}</span>
+            </div>
+
+            <div className="row">
+              <b>Difficulty</b>
+              <span>
+                {selectedBlock.difficulty != null
+                  ? Number(selectedBlock.difficulty).toLocaleString()
+                  : "—"}
+              </span>
+            </div>
+
+            <div className="row">
+              <b>Network</b>
+              <span>Bitcoin</span>
+            </div>
+
+            <div className="row">
+              <b>Status</b>
+              <span className="liveDot">● LIVE</span>
+            </div>
+
+          </section>
+        </section>
       )}
     </section>
   );
