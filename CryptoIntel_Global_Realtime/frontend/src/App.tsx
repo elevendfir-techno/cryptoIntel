@@ -1339,145 +1339,490 @@ function FundFlow(){
   );
 }
 function Blockchain(){
+
+  // =====================================================
+  // BITCOIN STATE
+  // =====================================================
+
   const [blocks,setBlocks]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
+
   const [selectedBlock,setSelectedBlock]=useState<any>(null);
   const [detailsLoading,setDetailsLoading]=useState(false);
   const [detailsError,setDetailsError]=useState("");
 
+
+  // =====================================================
+  // ETHEREUM STATE
+  // =====================================================
+
+  const [ethereumBlocks,setEthereumBlocks]=useState<any[]>([]);
+  const [ethereumLoading,setEthereumLoading]=useState(true);
+  const [ethereumError,setEthereumError]=useState("");
+
+  const [
+    selectedEthereumBlock,
+    setSelectedEthereumBlock
+  ]=useState<any>(null);
+
+  const [
+    ethereumDetailsLoading,
+    setEthereumDetailsLoading
+  ]=useState(false);
+
+  const [
+    ethereumDetailsError,
+    setEthereumDetailsError
+  ]=useState("");
+
+
+  // =====================================================
+  // BITCOIN LIVE BLOCKS
+  // =====================================================
+
   useEffect(()=>{
+
     fetch(`${API}/api/blockchain/bitcoin/blocks`)
+
       .then(r=>{
-        if(!r.ok) throw new Error("Blockchain API unavailable");
+
+        if(!r.ok){
+          throw new Error(
+            "Bitcoin Blockchain API unavailable"
+          );
+        }
+
         return r.json();
+
       })
+
       .then(d=>{
-        setBlocks(d.blocks || []);
+
+        setBlocks(
+          d.blocks || []
+        );
+
         setLoading(false);
+
       })
+
       .catch(e=>{
-        setError(e.message);
+
+        setError(
+          e.message
+        );
+
         setLoading(false);
+
       });
+
   },[]);
 
-  const openBlockDetails = async (block:any) => {
+
+  // =====================================================
+  // ETHEREUM LIVE BLOCKS
+  // =====================================================
+
+  useEffect(()=>{
+
+    fetch(`${API}/api/blockchain/ethereum/blocks`)
+
+      .then(r=>{
+
+        if(!r.ok){
+          throw new Error(
+            "Ethereum Blockchain API unavailable"
+          );
+        }
+
+        return r.json();
+
+      })
+
+      .then(d=>{
+
+        setEthereumBlocks(
+          d.blocks || []
+        );
+
+        setEthereumLoading(false);
+
+      })
+
+      .catch(e=>{
+
+        setEthereumError(
+          e.message
+        );
+
+        setEthereumLoading(false);
+
+      });
+
+  },[]);
+
+
+  // =====================================================
+  // BITCOIN BLOCK DETAILS
+  // =====================================================
+
+  const openBlockDetails = async (
+    block:any
+  ) => {
+
     if(!block?.hash) return;
 
     setSelectedBlock(null);
     setDetailsError("");
     setDetailsLoading(true);
 
-    try {
+    try{
+
       const response = await fetch(
         `${API}/api/blockchain/bitcoin/block/${encodeURIComponent(block.hash)}`
       );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if(!response.ok){
-        throw new Error(data.detail || "Block details unavailable");
+
+        throw new Error(
+          data.detail ||
+          "Bitcoin block details unavailable"
+        );
+
       }
 
-      setSelectedBlock(data.block || null);
-    } catch(e:any) {
-      setDetailsError(e.message || "Block details unavailable");
-    } finally {
+      setSelectedBlock(
+        data.block || null
+      );
+
+    }catch(e:any){
+
+      setDetailsError(
+        e.message ||
+        "Bitcoin block details unavailable"
+      );
+
+    }finally{
+
       setDetailsLoading(false);
+
     }
+
   };
 
-  const formatTime = (timestamp:any) => {
-    if(!timestamp) return "—";
-    return new Date(Number(timestamp) * 1000).toLocaleString();
+
+  // =====================================================
+  // ETHEREUM BLOCK DETAILS
+  // =====================================================
+
+  const openEthereumBlockDetails =
+    async (
+      block:any
+    ) => {
+
+      if(
+        block?.height === undefined ||
+        block?.height === null
+      ){
+        return;
+      }
+
+      setSelectedEthereumBlock(null);
+      setEthereumDetailsError("");
+      setEthereumDetailsLoading(true);
+
+      try{
+
+        const response = await fetch(
+          `${API}/api/blockchain/ethereum/block/${encodeURIComponent(block.height)}`
+        );
+
+        const data =
+          await response.json();
+
+        if(!response.ok){
+
+          throw new Error(
+            data.detail ||
+            "Ethereum block details unavailable"
+          );
+
+        }
+
+        setSelectedEthereumBlock(
+          data.block || null
+        );
+
+      }catch(e:any){
+
+        setEthereumDetailsError(
+          e.message ||
+          "Ethereum block details unavailable"
+        );
+
+      }finally{
+
+        setEthereumDetailsLoading(false);
+
+      }
+
+    };
+
+
+  // =====================================================
+  // TIME FORMAT
+  // =====================================================
+
+  const formatTime = (
+    timestamp:any
+  ) => {
+
+    if(
+      timestamp === undefined ||
+      timestamp === null
+    ){
+      return "—";
+    }
+
+    return new Date(
+      Number(timestamp) * 1000
+    ).toLocaleString();
+
   };
+
+
+  // =====================================================
+  // FORMAT ETHEREUM BASE FEE
+  // =====================================================
+
+  const formatBaseFee = (
+    value:any
+  ) => {
+
+    if(
+      value === undefined ||
+      value === null
+    ){
+      return "—";
+    }
+
+    return Number(
+      value
+    ).toLocaleString();
+
+  };
+
+
+  // =====================================================
+  // UI
+  // =====================================================
 
   return (
+
     <section className="panel">
-      <h2>Bitcoin Blockchain Intelligence</h2>
-      <p>LIVE blockchain data from Bitcoin network</p>
 
-      {loading && <div className="empty">Loading live blocks...</div>}
+      <h2>
+        Blockchain Intelligence
+      </h2>
 
-      {error && <div className="empty">{error}</div>}
+      <p>
+        Multi-chain • Live blockchain data
+      </p>
 
-      {!loading && !error && (
-        <div className="table">
-          <div className="thead">
-            <span>Height</span>
-            <span>Block Hash</span>
-            <span>Transactions</span>
-            <span>Size</span>
-            <span>Weight</span>
-            <span>Status</span>
+
+      {/* =================================================
+          BITCOIN
+      ================================================= */}
+
+      <section className="panel">
+
+        <h2>
+          Bitcoin Blockchain Intelligence
+        </h2>
+
+        <p>
+          LIVE blockchain data from Bitcoin network
+        </p>
+
+
+        {loading && (
+
+          <div className="empty">
+            Loading live Bitcoin blocks...
           </div>
 
-          {blocks.map((b,i)=>(
-            <div
-              className="tr"
-              key={i}
-              onClick={()=>openBlockDetails(b)}
-              style={{
-                cursor: b.hash ? "pointer" : "default"
-              }}
-              title={b.hash ? "Click to view block details" : ""}
-            >
+        )}
 
-              <b>
-                {b.height ?? "—"}
-              </b>
 
-              <span
-                title={b.hash || ""}
-                style={{fontFamily:"monospace"}}
-              >
-                {b.hash
-                  ? b.hash.slice(0,18) + "..."
-                  : "—"}
+        {error && (
+
+          <div className="empty">
+            {error}
+          </div>
+
+        )}
+
+
+        {!loading && !error && (
+
+          <div className="table">
+
+            <div className="thead">
+
+              <span>
+                Height
               </span>
 
               <span>
-                {b.n_tx ?? 0}
+                Block Hash
               </span>
 
               <span>
-                {b.size
-                  ? b.size.toLocaleString()
-                  : "—"}
+                Transactions
               </span>
 
               <span>
-                {b.weight
-                  ? b.weight.toLocaleString()
-                  : "—"}
+                Size
               </span>
 
-              <span className="liveDot">
-                ● LIVE
+              <span>
+                Weight
+              </span>
+
+              <span>
+                Status
               </span>
 
             </div>
-          ))}
-        </div>
-      )}
+
+
+            {blocks.map(
+              (b,i)=>(
+
+                <div
+                  className="tr"
+                  key={i}
+                  onClick={() =>
+                    openBlockDetails(b)
+                  }
+                  style={{
+                    cursor:
+                      b.hash
+                        ? "pointer"
+                        : "default"
+                  }}
+                  title={
+                    b.hash
+                      ? "Click to view Bitcoin block details"
+                      : ""
+                  }
+                >
+
+                  <b>
+                    {b.height ?? "—"}
+                  </b>
+
+
+                  <span
+                    title={b.hash || ""}
+                    style={{
+                      fontFamily:
+                        "monospace"
+                    }}
+                  >
+
+                    {b.hash
+                      ? b.hash.slice(0,18) + "..."
+                      : "—"}
+
+                  </span>
+
+
+                  <span>
+                    {b.n_tx ?? 0}
+                  </span>
+
+
+                  <span>
+
+                    {b.size
+                      ? b.size.toLocaleString()
+                      : "—"}
+
+                  </span>
+
+
+                  <span>
+
+                    {b.weight
+                      ? b.weight.toLocaleString()
+                      : "—"}
+
+                  </span>
+
+
+                  <span className="liveDot">
+                    ● LIVE
+                  </span>
+
+                </div>
+
+              )
+            )}
+
+          </div>
+
+        )}
+
+      </section>
+
+
+      {/* =================================================
+          BITCOIN DETAILS
+      ================================================= */}
 
       {detailsLoading && (
+
         <section className="panel">
-          <h2>Block Details</h2>
-          <div className="empty">Loading block details...</div>
+
+          <h2>
+            Bitcoin Block Details
+          </h2>
+
+          <div className="empty">
+            Loading block details...
+          </div>
+
         </section>
+
       )}
+
 
       {detailsError && (
+
         <section className="panel">
-          <h2>Block Details</h2>
-          <div className="empty">{detailsError}</div>
+
+          <h2>
+            Bitcoin Block Details
+          </h2>
+
+          <div className="empty">
+            {detailsError}
+          </div>
+
         </section>
+
       )}
 
+
       {selectedBlock && (
+
         <section className="panel">
+
           <div
             style={{
               display:"flex",
@@ -1486,31 +1831,55 @@ function Blockchain(){
               gap:"12px"
             }}
           >
+
             <div>
-              <h2>Block Details</h2>
-              <p>Live Bitcoin block information</p>
+
+              <h2>
+                Bitcoin Block Details
+              </h2>
+
+              <p>
+                Live Bitcoin block information
+              </p>
+
             </div>
+
 
             <button
               className="primary"
-              onClick={()=>setSelectedBlock(null)}
+              onClick={() =>
+                setSelectedBlock(null)
+              }
             >
               Close
             </button>
+
           </div>
 
+
           <div className="cards">
+
             <Card
               title="HEIGHT"
-              value={String(selectedBlock.height ?? "—")}
+              value={
+                String(
+                  selectedBlock.height ?? "—"
+                )
+              }
               sub="Block height"
             />
 
+
             <Card
               title="TRANSACTIONS"
-              value={String(selectedBlock.tx_count ?? 0)}
+              value={
+                String(
+                  selectedBlock.tx_count ?? 0
+                )
+              }
               sub="Transactions in block"
             />
+
 
             <Card
               title="SIZE"
@@ -1522,6 +1891,7 @@ function Blockchain(){
               sub="Bytes"
             />
 
+
             <Card
               title="WEIGHT"
               value={
@@ -1531,15 +1901,21 @@ function Blockchain(){
               }
               sub="Block weight"
             />
+
           </div>
 
+
           <section className="panel">
-            <h2>Block Information</h2>
+
+            <h2>
+              Block Information
+            </h2>
+
 
             <div className="row">
               <b>Full Block Hash</b>
+
               <span
-                title={selectedBlock.hash || ""}
                 style={{
                   fontFamily:"monospace",
                   wordBreak:"break-all"
@@ -1549,18 +1925,28 @@ function Blockchain(){
               </span>
             </div>
 
+
             <div className="row">
               <b>Timestamp</b>
-              <span>{formatTime(selectedBlock.timestamp)}</span>
+              <span>
+                {formatTime(
+                  selectedBlock.timestamp
+                )}
+              </span>
             </div>
+
 
             <div className="row">
               <b>Version</b>
-              <span>{selectedBlock.version ?? "—"}</span>
+              <span>
+                {selectedBlock.version ?? "—"}
+              </span>
             </div>
+
 
             <div className="row">
               <b>Merkle Root</b>
+
               <span
                 style={{
                   fontFamily:"monospace",
@@ -1569,10 +1955,13 @@ function Blockchain(){
               >
                 {selectedBlock.merkle_root || "—"}
               </span>
+
             </div>
+
 
             <div className="row">
               <b>Previous Block Hash</b>
+
               <span
                 style={{
                   fontFamily:"monospace",
@@ -1581,40 +1970,539 @@ function Blockchain(){
               >
                 {selectedBlock.previous_block_hash || "—"}
               </span>
+
             </div>
+
 
             <div className="row">
               <b>Nonce</b>
-              <span>{selectedBlock.nonce ?? "—"}</span>
-            </div>
-
-            <div className="row">
-              <b>Bits</b>
-              <span>{selectedBlock.bits ?? "—"}</span>
-            </div>
-
-            <div className="row">
-              <b>Difficulty</b>
               <span>
-                {selectedBlock.difficulty != null
-                  ? Number(selectedBlock.difficulty).toLocaleString()
-                  : "—"}
+                {selectedBlock.nonce ?? "—"}
               </span>
             </div>
 
+
+            <div className="row">
+              <b>Bits</b>
+              <span>
+                {selectedBlock.bits ?? "—"}
+              </span>
+            </div>
+
+
+            <div className="row">
+              <b>Difficulty</b>
+
+              <span>
+
+                {selectedBlock.difficulty != null
+                  ? Number(
+                      selectedBlock.difficulty
+                    ).toLocaleString()
+                  : "—"}
+
+              </span>
+
+            </div>
+
+
             <div className="row">
               <b>Network</b>
-              <span>Bitcoin</span>
+              <span>
+                Bitcoin
+              </span>
             </div>
+
 
             <div className="row">
               <b>Status</b>
-              <span className="liveDot">● LIVE</span>
+
+              <span className="liveDot">
+                ● LIVE
+              </span>
+
             </div>
 
           </section>
+
         </section>
+
       )}
+
+
+      {/* =================================================
+          ETHEREUM
+      ================================================= */}
+
+      <section className="panel">
+
+        <h2>
+          Ethereum Blockchain Intelligence
+        </h2>
+
+        <p>
+          LIVE blockchain data from Ethereum Mainnet
+        </p>
+
+
+        {ethereumLoading && (
+
+          <div className="empty">
+            Loading live Ethereum blocks...
+          </div>
+
+        )}
+
+
+        {ethereumError && (
+
+          <div className="empty">
+            {ethereumError}
+          </div>
+
+        )}
+
+
+        {!ethereumLoading &&
+         !ethereumError && (
+
+          <div className="table">
+
+            <div className="thead">
+
+              <span>
+                Block
+              </span>
+
+              <span>
+                Block Hash
+              </span>
+
+              <span>
+                Transactions
+              </span>
+
+              <span>
+                Gas Used
+              </span>
+
+              <span>
+                Gas Limit
+              </span>
+
+              <span>
+                Base Fee
+              </span>
+
+            </div>
+
+
+            {ethereumBlocks.map(
+              (b,i)=>(
+
+                <div
+                  className="tr"
+                  key={i}
+                  onClick={() =>
+                    openEthereumBlockDetails(b)
+                  }
+                  style={{
+                    cursor:"pointer"
+                  }}
+                  title="Click to view Ethereum block details"
+                >
+
+                  <b>
+                    {b.height ?? "—"}
+                  </b>
+
+
+                  <span
+                    title={b.hash || ""}
+                    style={{
+                      fontFamily:"monospace"
+                    }}
+                  >
+
+                    {b.hash
+                      ? b.hash.slice(0,18) + "..."
+                      : "—"}
+
+                  </span>
+
+
+                  <span>
+                    {b.tx_count ?? 0}
+                  </span>
+
+
+                  <span>
+                    {b.gas_used != null
+                      ? b.gas_used.toLocaleString()
+                      : "—"}
+                  </span>
+
+
+                  <span>
+                    {b.gas_limit != null
+                      ? b.gas_limit.toLocaleString()
+                      : "—"}
+                  </span>
+
+
+                  <span>
+                    {formatBaseFee(
+                      b.base_fee_per_gas
+                    )}
+                  </span>
+
+                </div>
+
+              )
+            )}
+
+          </div>
+
+        )}
+
+      </section>
+
+
+      {/* =================================================
+          ETHEREUM DETAILS
+      ================================================= */}
+
+      {ethereumDetailsLoading && (
+
+        <section className="panel">
+
+          <h2>
+            Ethereum Block Details
+          </h2>
+
+          <div className="empty">
+            Loading Ethereum block details...
+          </div>
+
+        </section>
+
+      )}
+
+
+      {ethereumDetailsError && (
+
+        <section className="panel">
+
+          <h2>
+            Ethereum Block Details
+          </h2>
+
+          <div className="empty">
+            {ethereumDetailsError}
+          </div>
+
+        </section>
+
+      )}
+
+
+      {selectedEthereumBlock && (
+
+        <section className="panel">
+
+          <div
+            style={{
+              display:"flex",
+              justifyContent:"space-between",
+              alignItems:"center",
+              gap:"12px"
+            }}
+          >
+
+            <div>
+
+              <h2>
+                Ethereum Block Details
+              </h2>
+
+              <p>
+                Live Ethereum Mainnet block information
+              </p>
+
+            </div>
+
+
+            <button
+              className="primary"
+              onClick={() =>
+                setSelectedEthereumBlock(null)
+              }
+            >
+              Close
+            </button>
+
+          </div>
+
+
+          <div className="cards">
+
+            <Card
+              title="BLOCK"
+              value={
+                String(
+                  selectedEthereumBlock.height ?? "—"
+                )
+              }
+              sub="Ethereum block number"
+            />
+
+
+            <Card
+              title="TRANSACTIONS"
+              value={
+                String(
+                  selectedEthereumBlock.tx_count ?? 0
+                )
+              }
+              sub="Transactions in block"
+            />
+
+
+            <Card
+              title="GAS USED"
+              value={
+                selectedEthereumBlock.gas_used != null
+                  ? Number(
+                      selectedEthereumBlock.gas_used
+                    ).toLocaleString()
+                  : "—"
+              }
+              sub="Gas used"
+            />
+
+
+            <Card
+              title="GAS LIMIT"
+              value={
+                selectedEthereumBlock.gas_limit != null
+                  ? Number(
+                      selectedEthereumBlock.gas_limit
+                    ).toLocaleString()
+                  : "—"
+              }
+              sub="Block gas limit"
+            />
+
+          </div>
+
+
+          <section className="panel">
+
+            <h2>
+              Ethereum Block Information
+            </h2>
+
+
+            <div className="row">
+
+              <b>
+                Full Block Hash
+              </b>
+
+              <span
+                style={{
+                  fontFamily:"monospace",
+                  wordBreak:"break-all"
+                }}
+              >
+                {selectedEthereumBlock.hash || "—"}
+              </span>
+
+            </div>
+
+
+            <div className="row">
+
+              <b>
+                Timestamp
+              </b>
+
+              <span>
+                {formatTime(
+                  selectedEthereumBlock.timestamp
+                )}
+              </span>
+
+            </div>
+
+
+            <div className="row">
+
+              <b>
+                Transactions
+              </b>
+
+              <span>
+                {selectedEthereumBlock.tx_count ?? 0}
+              </span>
+
+            </div>
+
+
+            <div className="row">
+
+              <b>
+                Gas Used
+              </b>
+
+              <span>
+                {selectedEthereumBlock.gas_used != null
+                  ? Number(
+                      selectedEthereumBlock.gas_used
+                    ).toLocaleString()
+                  : "—"}
+              </span>
+
+            </div>
+
+
+            <div className="row">
+
+              <b>
+                Gas Limit
+              </b>
+
+              <span>
+                {selectedEthereumBlock.gas_limit != null
+                  ? Number(
+                      selectedEthereumBlock.gas_limit
+                    ).toLocaleString()
+                  : "—"}
+              </span>
+
+            </div>
+
+
+            <div className="row">
+
+              <b>
+                Base Fee Per Gas
+              </b>
+
+              <span>
+                {formatBaseFee(
+                  selectedEthereumBlock.base_fee_per_gas
+                )}
+              </span>
+
+            </div>
+
+
+            <div className="row">
+
+              <b>
+                Parent Block Hash
+              </b>
+
+              <span
+                style={{
+                  fontFamily:"monospace",
+                  wordBreak:"break-all"
+                }}
+              >
+                {selectedEthereumBlock.parent_hash || "—"}
+              </span>
+
+            </div>
+
+
+            <div className="row">
+
+              <b>
+                State Root
+              </b>
+
+              <span
+                style={{
+                  fontFamily:"monospace",
+                  wordBreak:"break-all"
+                }}
+              >
+                {selectedEthereumBlock.state_root || "—"}
+              </span>
+
+            </div>
+
+
+            <div className="row">
+
+              <b>
+                Transactions Root
+              </b>
+
+              <span
+                style={{
+                  fontFamily:"monospace",
+                  wordBreak:"break-all"
+                }}
+              >
+                {selectedEthereumBlock.transactions_root || "—"}
+              </span>
+
+            </div>
+
+
+            <div className="row">
+
+              <b>
+                Receipts Root
+              </b>
+
+              <span
+                style={{
+                  fontFamily:"monospace",
+                  wordBreak:"break-all"
+                }}
+              >
+                {selectedEthereumBlock.receipts_root || "—"}
+              </span>
+
+            </div>
+
+
+            <div className="row">
+
+              <b>
+                Network
+              </b>
+
+              <span>
+                Ethereum Mainnet
+              </span>
+
+            </div>
+
+
+            <div className="row">
+
+              <b>
+                Status
+              </b>
+
+              <span className="liveDot">
+                ● LIVE
+              </span>
+
+            </div>
+
+          </section>
+
+        </section>
+
+      )}
+
     </section>
+
   );
+
 }

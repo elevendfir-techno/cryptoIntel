@@ -10,6 +10,7 @@ router = APIRouter(
 
 BITCOIN_API = "https://blockchain.info"
 MEMPOOL_API = "https://mempool.space/api"
+ETHEREUM_RPC = "https://ethereum-rpc.publicnode.com"
 
 # =========================================================
 # CACHE
@@ -538,5 +539,464 @@ async def bitcoin_address(address: str):
             status_code=502,
             detail=(
                 f"Address lookup failed: {str(e)}"
+            )
+        )
+        # =========================================================
+# ETHEREUM LIVE BLOCKCHAIN
+# =========================================================
+
+ETHEREUM_CACHE = {
+    "network": "Ethereum",
+    "status": "STARTING",
+    "latest_height": None,
+    "blocks": [],
+    "count": 0,
+    "source": "PublicNode Ethereum JSON-RPC",
+    "updated_at": 0.0
+}
+
+
+async def ethereum_rpc(client, method, params):
+
+    response = await client.post(
+        ETHEREUM_RPC,
+        json={
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+            "id": 1
+        }
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    if "error" in data:
+
+        raise Exception(
+            data["error"].get(
+                "message",
+                "Ethereum RPC error"
+            )
+        )
+
+    return data.get("result")
+
+
+async def refresh_ethereum_blocks():
+
+    try:
+
+        async with httpx.AsyncClient(
+            timeout=20,
+            headers={
+                "User-Agent": "CryptoIntel/1.0"
+            }
+        ) as client:
+
+            # -------------------------------------------------
+            # Get latest Ethereum block number
+            # -------------------------------------------------
+
+            latest_hex = await ethereum_rpc(
+                client,
+                "eth_blockNumber",
+                []
+            )
+
+            latest_height = int(
+                latest_hex,
+                16
+            )
+
+            blocks = []
+
+            # -------------------------------------------------
+            # Get latest 10 blocks
+            # -------------------------------------------------
+
+            for height in range(
+                latest_height,
+                latest_height - 10,
+                -1
+            ):
+
+                block_hex = hex(height)
+
+                block = await ethereum_rpc(
+                    client,
+                    "eth_getBlockByNumber",
+                    [
+                        block_hex,
+                        False
+                    ]
+                )
+
+                if not block:
+                    continue
+
+                timestamp = int(
+                    block.get(
+                        "timestamp",
+                        "0x0"
+                    ),
+                    16
+                )
+
+                blocks.append({
+                    "hash": block.get("hash"),
+
+                    "height": int(
+                        block.get(
+                            "number",
+                            "0x0"
+                        ),
+                        16
+                    ),
+
+                    "time": timestamp,
+
+                    "block_index": int(
+                        block.get(
+                            "number",
+                            "0x0"
+                        ),
+                        16
+                    ),
+
+                    "txIndexes":
+                        block.get(
+                            "transactions",
+                            []
+                        ),
+
+                    "n_tx":
+                        len(
+                            block.get(
+                                "transactions",
+                                []
+                            )
+                        ),
+
+                    "size": int(
+                        block.get(
+                            "size",
+                            "0x0"
+                        ),
+                        16
+                    ),
+
+                    "weight": 0,
+
+                    "prev_block":
+                        block.get(
+                            "parentHash"
+                        ),
+
+                    "main_chain": True,
+
+                    "gas_used": int(
+                        block.get(
+                            "gasUsed",
+                            "0x0"
+                        ),
+                        16
+                    ),
+
+                    "gas_limit": int(
+                        block.get(
+                            "gasLimit",
+                            "0x0"
+                        ),
+                        16
+                    ),
+
+                    "base_fee_per_gas": (
+                        int(
+                            block[
+                                "baseFeePerGas"
+                            ],
+                            16
+                        )
+                        if block.get(
+                            "baseFeePerGas"
+                        )
+                        else None
+                    )
+                })
+
+            if not blocks:
+                return
+
+            blocks.sort(
+                key=lambda x: x.get(
+                    "height",
+                    0
+                ),
+                reverse=True
+            )
+
+            # -------------------------------------------------
+            # Update Ethereum cache
+            # -------------------------------------------------
+
+            ETHEREUM_CACHE["network"] = (
+                "Ethereum"
+            )
+
+            ETHEREUM_CACHE["status"] = (
+                "LIVE"
+            )
+
+            ETHEREUM_CACHE["latest_height"] = (
+                latest_height
+            )
+
+            ETHEREUM_CACHE["blocks"] = (
+                blocks[:10]
+            )
+
+            ETHEREUM_CACHE["count"] = len(
+                blocks[:10]
+            )
+
+            ETHEREUM_CACHE["source"] = (
+                "PublicNode Ethereum JSON-RPC"
+            )
+
+            ETHEREUM_CACHE["updated_at"] = (
+                time.time()
+            )
+
+            print(
+                f"Ethereum blocks updated: "
+                f"{latest_height}"
+            )
+
+    except Exception as e:
+
+        print(
+            f"Ethereum block refresh error: "
+            f"{e}"
+        )
+
+
+# =========================================================
+# ETHEREUM LATEST BLOCKS API
+# =========================================================
+
+@router.get("/ethereum/blocks")
+async def ethereum_blocks():
+
+    if ETHEREUM_CACHE["blocks"]:
+
+        return {
+            "network":
+                ETHEREUM_CACHE["network"],
+
+            "status":
+                ETHEREUM_CACHE["status"],
+
+            "latest_height":
+                ETHEREUM_CACHE["latest_height"],
+
+            "blocks":
+                ETHEREUM_CACHE["blocks"],
+
+            "count":
+                ETHEREUM_CACHE["count"],
+
+            "source":
+                ETHEREUM_CACHE["source"],
+
+            "cached": True
+        }
+
+    await refresh_ethereum_blocks()
+
+    if not ETHEREUM_CACHE["blocks"]:
+
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Ethereum blockchain data "
+                "temporarily unavailable."
+            )
+        )
+
+    return {
+        "network":
+            ETHEREUM_CACHE["network"],
+
+        "status":
+            ETHEREUM_CACHE["status"],
+
+        "latest_height":
+            ETHEREUM_CACHE["latest_height"],
+
+        "blocks":
+            ETHEREUM_CACHE["blocks"],
+
+        "count":
+            ETHEREUM_CACHE["count"],
+
+        "source":
+            ETHEREUM_CACHE["source"],
+
+        "cached": True
+    }
+
+
+# =========================================================
+# ETHEREUM BLOCK DETAILS
+# =========================================================
+
+@router.get("/ethereum/block/{block_number}")
+async def ethereum_block_details(
+    block_number: str
+):
+
+    try:
+
+        if block_number.startswith(
+            "0x"
+        ):
+
+            block_param = block_number
+
+        else:
+
+            block_param = hex(
+                int(block_number)
+            )
+
+        async with httpx.AsyncClient(
+            timeout=20,
+            headers={
+                "User-Agent": "CryptoIntel/1.0"
+            }
+        ) as client:
+
+            block = await ethereum_rpc(
+                client,
+                "eth_getBlockByNumber",
+                [
+                    block_param,
+                    False
+                ]
+            )
+
+        if not block:
+
+            raise HTTPException(
+                status_code=404,
+                detail="Ethereum block not found."
+            )
+
+        return {
+            "network": "Ethereum",
+
+            "status": "LIVE",
+
+            "block": {
+                "hash":
+                    block.get("hash"),
+
+                "height": int(
+                    block.get(
+                        "number",
+                        "0x0"
+                    ),
+                    16
+                ),
+
+                "timestamp": int(
+                    block.get(
+                        "timestamp",
+                        "0x0"
+                    ),
+                    16
+                ),
+
+                "tx_count": len(
+                    block.get(
+                        "transactions",
+                        []
+                    )
+                ),
+
+                "size": int(
+                    block.get(
+                        "size",
+                        "0x0"
+                    ),
+                    16
+                ),
+
+                "gas_used": int(
+                    block.get(
+                        "gasUsed",
+                        "0x0"
+                    ),
+                    16
+                ),
+
+                "gas_limit": int(
+                    block.get(
+                        "gasLimit",
+                        "0x0"
+                    ),
+                    16
+                ),
+
+                "base_fee_per_gas": (
+                    int(
+                        block[
+                            "baseFeePerGas"
+                        ],
+                        16
+                    )
+                    if block.get(
+                        "baseFeePerGas"
+                    )
+                    else None
+                ),
+
+                "parent_hash":
+                    block.get(
+                        "parentHash"
+                    ),
+
+                "state_root":
+                    block.get(
+                        "stateRoot"
+                    ),
+
+                "transactions_root":
+                    block.get(
+                        "transactionsRoot"
+                    ),
+
+                "receipts_root":
+                    block.get(
+                        "receiptsRoot"
+                    )
+            },
+
+            "source":
+                "PublicNode Ethereum JSON-RPC"
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"Ethereum block lookup "
+                f"failed: {str(e)}"
             )
         )
