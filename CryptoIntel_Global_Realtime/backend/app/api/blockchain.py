@@ -1228,7 +1228,6 @@ async def ethereum_wallet(address: str):
 async def ethereum_wallet_transactions(address: str):
 
     try:
-
         if not address.startswith("0x") or len(address) != 42:
             raise HTTPException(
                 status_code=400,
@@ -1236,21 +1235,17 @@ async def ethereum_wallet_transactions(address: str):
             )
 
         url = (
-            f"https://api.ethplorer.io/"
-            f"getAddressTransactions/{address}"
+            f"https://eth.blockscout.com/"
+            f"api/v2/addresses/{address}/transactions"
         )
 
         params = {
-            "apiKey": "freekey",
-            "limit": 50,
-            "showZeroValues": "false"
-        }
+    "items_count": 50
+}
 
         async with httpx.AsyncClient(
             timeout=20,
-            headers={
-                "User-Agent": "CryptoIntel/1.0"
-            }
+            headers={"User-Agent": "CryptoIntel/1.0"}
         ) as client:
 
             response = await client.get(
@@ -1262,33 +1257,47 @@ async def ethereum_wallet_transactions(address: str):
 
         data = response.json()
 
+        items = data.get("items", [])
+
+        transactions = []
+
+        for tx in items:
+
+            from_data = tx.get("from", {})
+            to_data = tx.get("to", {})
+
+            from_address = from_data.get("hash")
+            to_address = to_data.get("hash")
+
+            value = tx.get("value")
+
+            direction = (
+                "INCOMING"
+                if to_address and
+                to_address.lower() == address.lower()
+                else "OUTGOING"
+            )
+
+            transactions.append({
+                "hash": tx.get("hash"),
+                "timestamp": tx.get("timestamp"),
+                "from": from_address,
+                "to": to_address,
+                "value": value,
+                "success": tx.get("status") == "ok",
+                "direction": direction,
+                "block": tx.get("block"),
+                "fee": tx.get("fee")
+            })
+
         return {
             "network": "Ethereum",
-
             "status": "LIVE",
-
             "wallet": address,
-
-            "count": len(data),
-
-            "transactions": [
-    {
-        "hash": tx.get("hash"),
-        "timestamp": tx.get("timestamp"),
-        "from": tx.get("from"),
-        "to": tx.get("to"),
-        "value": tx.get("value"),
-        "success": tx.get("success"),
-        "direction": (
-            "INCOMING"
-            if tx.get("to", "").lower() == address.lower()
-            else "OUTGOING"
-        )
-    }
-    for tx in data
-],
-            "source":
-                "Ethplorer Ethereum Address API"
+            "count": len(transactions),
+            "transactions": transactions,
+            "next_page_params": data.get("next_page_params"),
+            "source": "Blockscout Ethereum API"
         }
 
     except HTTPException:
@@ -1302,8 +1311,10 @@ async def ethereum_wallet_transactions(address: str):
                 f"Ethereum transaction history "
                 f"failed: {str(e)}"
             )
-        )    
- # =========================================================
+        )
+
+
+# =========================================================
 # ETHEREUM ERC-20 TOKEN TRANSFERS
 # =========================================================
 
@@ -1311,7 +1322,6 @@ async def ethereum_wallet_transactions(address: str):
 async def ethereum_wallet_tokens(address: str):
 
     try:
-
         if not address.startswith("0x") or len(address) != 42:
             raise HTTPException(
                 status_code=400,
@@ -1319,21 +1329,18 @@ async def ethereum_wallet_tokens(address: str):
             )
 
         url = (
-            f"https://api.ethplorer.io/"
-            f"getAddressHistory/{address}"
+            f"https://eth.blockscout.com/"
+            f"api/v2/addresses/{address}/token-transfers"
         )
 
         params = {
-            "apiKey": "freekey",
-            "type": "transfer",
-            "limit": 50
+            "type": "ERC-20",
+            "items_count": 50
         }
 
         async with httpx.AsyncClient(
             timeout=20,
-            headers={
-                "User-Agent": "CryptoIntel/1.0"
-            }
+            headers={"User-Agent": "CryptoIntel/1.0"}
         ) as client:
 
             response = await client.get(
@@ -1345,35 +1352,37 @@ async def ethereum_wallet_tokens(address: str):
 
         data = response.json()
 
-        operations = data.get(
-            "operations",
-            []
-        )
+        items = data.get("items", [])
 
         transfers = []
 
-        for tx in operations:
+        for tx in items:
 
-            token_info = tx.get(
-                "tokenInfo",
-                {}
+            from_data = tx.get("from", {})
+            to_data = tx.get("to", {})
+            token = tx.get("token", {})
+
+            from_address = from_data.get("hash")
+            to_address = to_data.get("hash")
+
+            direction = (
+                "INCOMING"
+                if to_address and
+                to_address.lower() == address.lower()
+                else "OUTGOING"
             )
 
             transfers.append({
-                "hash": tx.get("transactionHash"),
+                "hash": tx.get("transaction_hash"),
                 "timestamp": tx.get("timestamp"),
-                "from": tx.get("from"),
-                "to": tx.get("to"),
-                "token": token_info.get("name"),
-                "symbol": token_info.get("symbol"),
-                "token_address": token_info.get("address"),
-                "value": tx.get("value"),
-                "direction": (
-                    "INCOMING"
-                    if tx.get("to", "").lower()
-                    == address.lower()
-                    else "OUTGOING"
-                )
+                "from": from_address,
+                "to": to_address,
+                "token": token.get("name"),
+                "symbol": token.get("symbol"),
+                "token_address": token.get("address"),
+                "value": tx.get("total", {}).get("value"),
+                "decimals": tx.get("total", {}).get("decimals"),
+                "direction": direction
             })
 
         return {
@@ -1382,7 +1391,8 @@ async def ethereum_wallet_tokens(address: str):
             "wallet": address,
             "count": len(transfers),
             "token_transfers": transfers,
-            "source": "Ethplorer Ethereum Address API"
+            "next_page_params": data.get("next_page_params"),
+            "source": "Blockscout Ethereum API"
         }
 
     except HTTPException:
@@ -1396,4 +1406,4 @@ async def ethereum_wallet_tokens(address: str):
                 f"Ethereum token transfer "
                 f"lookup failed: {str(e)}"
             )
-        )       
+        )
