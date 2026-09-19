@@ -9,7 +9,7 @@ router = APIRouter(
 )
 
 BITCOIN_API = "https://blockchain.info"
-BLOCKSTREAM_API = "https://blockstream.info/api"
+MEMPOOL_API = "https://mempool.space/api"
 
 # =========================================================
 # CACHE
@@ -116,11 +116,18 @@ async def refresh_blocks():
     try:
 
         async with httpx.AsyncClient(
-            timeout=20
+            timeout=20,
+            headers={
+                "User-Agent": "CryptoIntel/1.0"
+            }
         ) as client:
 
+            # -------------------------------------------------
+            # Get latest 10 Bitcoin blocks
+            # -------------------------------------------------
+
             response = await client.get(
-                f"{BLOCKSTREAM_API}/blocks"
+                f"{MEMPOOL_API}/blocks"
             )
 
             response.raise_for_status()
@@ -131,7 +138,7 @@ async def refresh_blocks():
                 return
 
             # -------------------------------------------------
-            # Build latest 10 Bitcoin blocks
+            # Build block records
             # -------------------------------------------------
 
             blocks = []
@@ -180,6 +187,9 @@ async def refresh_blocks():
                 reverse=True
             )
 
+            if not blocks:
+                return
+
             latest_height = blocks[0]["height"]
 
             # -------------------------------------------------
@@ -199,7 +209,7 @@ async def refresh_blocks():
             )
 
             BLOCK_CACHE["source"] = (
-                "Blockstream Esplora API"
+                "Mempool.space Bitcoin API"
             )
 
             BLOCK_CACHE["updated_at"] = time.time()
@@ -214,7 +224,7 @@ async def refresh_blocks():
         print(
             f"Bitcoin block refresh error: {e}"
         )
-
+        
 # =========================================================
 # BACKGROUND BLOCK REFRESH
 # =========================================================
