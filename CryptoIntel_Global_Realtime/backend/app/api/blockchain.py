@@ -1223,9 +1223,15 @@ async def ethereum_wallet(address: str):
 # =========================================================
 # ETHEREUM WALLET TRANSACTION HISTORY
 # =========================================================
-
 @router.get("/ethereum/wallet/{address}/transactions")
-async def ethereum_wallet_transactions(address: str):
+async def ethereum_wallet_transactions(
+    address: str,
+    items_count: int = 50,
+    page: str | None = None,
+    block_number: str | None = None,
+    index: str | None = None,
+    filter: str | None = None
+):
 
     try:
         if not address.startswith("0x") or len(address) != 42:
@@ -1240,8 +1246,24 @@ async def ethereum_wallet_transactions(address: str):
         )
 
         params = {
-    "items_count": 50
-}
+            "items_count": min(max(items_count, 1), 50)
+        }
+
+        # -------------------------------------------------
+        # BLOCKSCOUT PAGINATION
+        # -------------------------------------------------
+
+        if page:
+            params["page"] = page
+
+        if block_number:
+            params["block_number"] = block_number
+
+        if index:
+            params["index"] = index
+
+        if filter:
+            params["filter"] = filter
 
         async with httpx.AsyncClient(
             timeout=20,
@@ -1273,8 +1295,8 @@ async def ethereum_wallet_transactions(address: str):
 
             direction = (
                 "INCOMING"
-                if to_address and
-                to_address.lower() == address.lower()
+                if to_address
+                and to_address.lower() == address.lower()
                 else "OUTGOING"
             )
 
@@ -1296,7 +1318,12 @@ async def ethereum_wallet_transactions(address: str):
             "wallet": address,
             "count": len(transactions),
             "transactions": transactions,
+
+            # Important for frontend "Load More"
             "next_page_params": data.get("next_page_params"),
+
+            "has_more": bool(data.get("next_page_params")),
+
             "source": "Blockscout Ethereum API"
         }
 

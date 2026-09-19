@@ -575,6 +575,8 @@ function WalletSearch() {
   const [tokens, setTokens] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [nextPageParams, setNextPageParams] = useState<any>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const investigate = async () => {
     const value = address.trim();
@@ -593,6 +595,7 @@ function WalletSearch() {
     setWallet(null);
     setTransactions([]);
     setTokens([]);
+    setNextPageParams(null);
 
     try {
       if (network === "bitcoin") {
@@ -660,6 +663,10 @@ function WalletSearch() {
           txData.transactions || []
         );
 
+        setNextPageParams(
+        txData.next_page_params || null
+        );
+
         setTokens(
           tokenData.token_transfers || []
         );
@@ -672,6 +679,70 @@ function WalletSearch() {
       );
     } finally {
       setLoading(false);
+    }
+  };
+  
+  const loadMoreTransactions = async () => {
+    if (
+      network !== "ethereum" ||
+      !address.trim() ||
+      !nextPageParams ||
+      loadingMore
+    ) {
+      return;
+    }
+
+    setLoadingMore(true);
+    setError("");
+
+    try {
+      const query = new URLSearchParams();
+
+      Object.entries(nextPageParams).forEach(
+        ([key, value]) => {
+          if (
+            value !== null &&
+            value !== undefined
+          ) {
+            query.append(
+              key,
+              String(value)
+            );
+          }
+        }
+      );
+
+      const response = await fetch(
+        `${API}/api/blockchain/ethereum/wallet/${encodeURIComponent(
+          address.trim()
+        )}/transactions?${query.toString()}`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail ||
+          "Failed to load more transactions."
+        );
+      }
+
+      setTransactions(prev => [
+        ...prev,
+        ...(data.transactions || [])
+      ]);
+
+      setNextPageParams(
+        data.next_page_params || null
+      );
+
+    } catch (e: any) {
+      setError(
+        e.message ||
+        "Failed to load more transactions."
+      );
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -931,7 +1002,7 @@ function WalletSearch() {
                         tx.hash ||
                         tx.txid ||
                         "";
-
+                        
                       const blockHeight =
                         tx.block_height ??
                         tx.status?.block_height ??
@@ -1121,114 +1192,149 @@ function WalletSearch() {
           </section>
 
 
-          {/* ETH TRANSACTIONS */}
+          {/* ETH TRANSACTION HISTORY */}
 
-          <section className="panel">
+<section className="panel">
 
-            <h2>
-              Ethereum Transaction History
-            </h2>
+  <h2>
+    Ethereum Transaction History
+  </h2>
 
-            {transactions.length ? (
+  {transactions.length ? (
 
-              <div className="table">
+    <>
+      <div className="table">
 
-                <div className="thead">
-                  <span>Direction</span>
-                  <span>From</span>
-                  <span>To</span>
-                  <span>Value</span>
-                  <span>Status</span>
-                </div>
+        <div className="thead">
+          <span>Direction</span>
+          <span>Transaction</span>
+          <span>From</span>
+          <span>To</span>
+          <span>Value</span>
+          <span>Status</span>
+        </div>
 
-                {transactions
-                  .slice(0, 50)
-                  .map(
-                    (tx: any, i: number) => (
+        {transactions.map(
+          (tx: any, i: number) => (
 
-                      <div
-                        className="tr"
-                        key={
-                          tx.hash || i
-                        }
-                      >
+            <div
+              className="tr"
+              key={tx.hash || i}
+            >
 
-                        <span>
-                          <b
-                            className={
-                              tx.direction ===
-                              "INCOMING"
-                                ? "up"
-                                : "down"
-                            }
-                          >
-                            {tx.direction ||
-                              "UNKNOWN"}
-                          </b>
-                        </span>
+              <span>
+                <b
+                  className={
+                    tx.direction === "INCOMING"
+                      ? "up"
+                      : "down"
+                  }
+                >
+                  {tx.direction || "UNKNOWN"}
+                </b>
+              </span>
 
-                        <span
-                          title={tx.from}
-                          style={{
-                            fontFamily:
-                              "monospace"
-                          }}
-                        >
-                          {tx.from
-                            ? tx.from.slice(
-                                0,
-                                8
-                              ) +
-                              "..." +
-                              tx.from.slice(-6)
-                            : "—"}
-                        </span>
+              <span
+                title={tx.hash}
+                style={{
+                  fontFamily: "monospace"
+                }}
+              >
+                {tx.hash
+                  ? tx.hash.slice(0, 10) +
+                    "..." +
+                    tx.hash.slice(-8)
+                  : "—"}
+              </span>
 
-                        <span
-                          title={tx.to}
-                          style={{
-                            fontFamily:
-                              "monospace"
-                          }}
-                        >
-                          {tx.to
-                            ? tx.to.slice(
-                                0,
-                                8
-                              ) +
-                              "..." +
-                              tx.to.slice(-6)
-                            : "—"}
-                        </span>
+              <span
+                title={tx.from}
+                style={{
+                  fontFamily: "monospace"
+                }}
+              >
+                {tx.from
+                  ? tx.from.slice(0, 8) +
+                    "..." +
+                    tx.from.slice(-6)
+                  : "—"}
+              </span>
 
-                        <span>
-                          {tx.value ?? "0"}
-                        </span>
+              <span
+                title={tx.to}
+                style={{
+                  fontFamily: "monospace"
+                }}
+              >
+                {tx.to
+                  ? tx.to.slice(0, 8) +
+                    "..." +
+                    tx.to.slice(-6)
+                  : "—"}
+              </span>
 
-                        <span>
-                          {tx.success
-                            ? "SUCCESS"
-                            : "FAILED"}
-                        </span>
+              <span>
+                {tx.value ?? "0"}
+              </span>
 
-                      </div>
+              <span>
+                <b
+                  className={
+                    tx.success
+                      ? "up"
+                      : "down"
+                  }
+                >
+                  {tx.success
+                    ? "SUCCESS"
+                    : "FAILED"}
+                </b>
+              </span>
 
-                    )
-                  )}
+            </div>
 
-              </div>
+          )
+        )}
 
-            ) : (
+      </div>
 
-              <div className="empty">
-                No Ethereum transaction history
-                returned.
-              </div>
+      {nextPageParams && (
 
-            )}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            marginTop: "16px"
+          }}
+        >
 
-          </section>
+          <button
+            className="primary"
+            onClick={loadMoreTransactions}
+            disabled={loadingMore}
+          >
 
+            {loadingMore
+              ? "Loading..."
+              : "Load More Transactions"}
+
+          </button>
+
+        </div>
+
+      )}
+
+    </>
+
+  ) : (
+
+    <div className="empty">
+      No Ethereum transaction history returned.
+    </div>
+
+  )}
+
+</section>
 
           {/* ERC-20 */}
 
