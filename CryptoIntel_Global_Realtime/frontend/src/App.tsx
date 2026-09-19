@@ -567,65 +567,205 @@ function Detection({
     </>
   );
 }
-function WalletSearch(){
-  const [a,setA]=useState("");
-  const [r,setR]=useState<any>(null);
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState("");
+function WalletSearch() {
+  const [network, setNetwork] = useState<"bitcoin" | "ethereum">("bitcoin");
+  const [address, setAddress] = useState("");
+  const [wallet, setWallet] = useState<any>(null);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [tokens, setTokens] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const investigate=async()=>{
-    if(!a.trim()){
-      setError("Please enter a Bitcoin wallet address.");
+  const investigate = async () => {
+    const value = address.trim();
+
+    if (!value) {
+      setError(
+        network === "bitcoin"
+          ? "Please enter a Bitcoin wallet address."
+          : "Please enter an Ethereum wallet address."
+      );
       return;
     }
 
     setLoading(true);
     setError("");
-    setR(null);
+    setWallet(null);
+    setTransactions([]);
+    setTokens([]);
 
-    try{
-      const response=await fetch(
-        `${API}/api/wallets/${encodeURIComponent(a.trim())}?network=bitcoin`
-      );
+    try {
+      if (network === "bitcoin") {
+        const response = await fetch(
+          `${API}/api/wallets/${encodeURIComponent(value)}?network=bitcoin`
+        );
 
-      const data=await response.json();
+        const data = await response.json();
 
-      if(!response.ok){
-        throw new Error(data.detail || "Wallet lookup failed");
+        if (!response.ok) {
+          throw new Error(
+            data.detail || "Bitcoin wallet lookup failed."
+          );
+        }
+
+        setWallet({
+          type: "bitcoin",
+          raw: data
+        });
+
+        setTransactions(data.transactions || []);
       }
 
-      setR(data);
+      if (network === "ethereum") {
+        const [walletResponse, txResponse, tokenResponse] =
+          await Promise.all([
+            fetch(
+              `${API}/api/blockchain/ethereum/wallet/${encodeURIComponent(
+                value
+              )}`
+            ),
+            fetch(
+              `${API}/api/blockchain/ethereum/wallet/${encodeURIComponent(
+                value
+              )}/transactions`
+            ),
+            fetch(
+              `${API}/api/blockchain/ethereum/wallet/${encodeURIComponent(
+                value
+              )}/tokens`
+            )
+          ]);
 
-    }catch(e:any){
-      setError(e.message || "Wallet lookup failed");
+        const walletData = await walletResponse.json();
+        const txData = txResponse.ok
+          ? await txResponse.json()
+          : {};
+        const tokenData = tokenResponse.ok
+          ? await tokenResponse.json()
+          : {};
 
-    }finally{
+        if (!walletResponse.ok) {
+          throw new Error(
+            walletData.detail ||
+            "Ethereum wallet lookup failed."
+          );
+        }
+
+        setWallet({
+          type: "ethereum",
+          raw: walletData
+        });
+
+        setTransactions(
+          txData.transactions || []
+        );
+
+        setTokens(
+          tokenData.token_transfers || []
+        );
+      }
+
+    } catch (e: any) {
+      setError(
+        e.message ||
+        "Wallet investigation failed."
+      );
+    } finally {
       setLoading(false);
     }
   };
 
-  const btc=(sats:number)=>{
-    return ((sats || 0)/100000000).toFixed(8)+" BTC";
+  const btc = (sats: number) => {
+    return (
+      ((sats || 0) / 100000000).toFixed(8) +
+      " BTC"
+    );
   };
+
+  const ethWallet = wallet?.raw?.wallet;
+  const btcWallet = wallet?.raw;
 
   return (
     <section className="panel">
 
-      <h2>Bitcoin Wallet Investigation</h2>
+      <h2>
+        Wallet Investigation
+      </h2>
 
       <p>
-        Investigate Bitcoin addresses using live blockchain data.
+        Investigate live blockchain wallet activity,
+        transactions and token transfers.
       </p>
+
+
+      {/* NETWORK SELECTOR */}
+
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          marginBottom: "14px"
+        }}
+      >
+
+        <button
+          className={
+            network === "bitcoin"
+              ? "primary"
+              : "nav"
+          }
+          onClick={() => {
+            setNetwork("bitcoin");
+            setAddress("");
+            setWallet(null);
+            setTransactions([]);
+            setTokens([]);
+            setError("");
+          }}
+        >
+          Bitcoin
+        </button>
+
+        <button
+          className={
+            network === "ethereum"
+              ? "primary"
+              : "nav"
+          }
+          onClick={() => {
+            setNetwork("ethereum");
+            setAddress("");
+            setWallet(null);
+            setTransactions([]);
+            setTokens([]);
+            setError("");
+          }}
+        >
+          Ethereum
+        </button>
+
+      </div>
+
+
+      {/* SEARCH */}
 
       <div className="searchBox">
 
         <input
-          value={a}
-          onChange={e=>setA(e.target.value)}
-          onKeyDown={e=>{
-            if(e.key==="Enter") investigate();
+          value={address}
+          onChange={e =>
+            setAddress(e.target.value)
+          }
+          onKeyDown={e => {
+            if (e.key === "Enter") {
+              investigate();
+            }
           }}
-          placeholder="Enter Bitcoin wallet address"
+          placeholder={
+            network === "bitcoin"
+              ? "Enter Bitcoin wallet address"
+              : "Enter Ethereum wallet address"
+          }
         />
 
         <button
@@ -633,10 +773,15 @@ function WalletSearch(){
           onClick={investigate}
           disabled={loading}
         >
-          {loading ? "Investigating..." : "Investigate"}
+          {loading
+            ? "Investigating..."
+            : "Investigate"}
         </button>
 
       </div>
+
+
+      {/* ERROR */}
 
       {error && (
         <div className="empty">
@@ -644,29 +789,35 @@ function WalletSearch(){
         </div>
       )}
 
-      {r && (
-        <>
 
-          {/* SUMMARY CARDS */}
+      {/* =================================================
+          BITCOIN RESULTS
+      ================================================= */}
+
+      {wallet?.type === "bitcoin" && btcWallet && (
+        <>
 
           <div className="cards">
 
             <Card
               title="NETWORK"
-              value={r.network || "Bitcoin"}
+              value="Bitcoin"
               sub="Blockchain"
             />
 
             <Card
               title="BALANCE"
-              value={btc(r.balance?.balance || 0)}
-              sub="Current calculated balance"
+              value={btc(
+                btcWallet.balance?.balance || 0
+              )}
+              sub="Current balance"
             />
 
             <Card
               title="TRANSACTIONS"
               value={String(
-                r.activity?.confirmed_transactions || 0
+                btcWallet.activity
+                  ?.confirmed_transactions || 0
               )}
               sub="Confirmed transactions"
             />
@@ -674,84 +825,93 @@ function WalletSearch(){
             <Card
               title="STATUS"
               value="LIVE"
-              sub="Blockchain.com data"
+              sub="Blockchain data"
             />
 
           </div>
 
 
-          {/* WALLET DETAILS */}
-
           <section className="panel">
 
-            <h2>Wallet Details</h2>
+            <h2>
+              Bitcoin Wallet Details
+            </h2>
 
             <div className="row">
               <b>Address</b>
-              <span>{r.address}</span>
+              <span>
+                {btcWallet.address}
+              </span>
             </div>
 
             <div className="row">
               <b>Balance</b>
               <span>
-                {btc(r.balance?.balance || 0)}
+                {btc(
+                  btcWallet.balance?.balance || 0
+                )}
               </span>
             </div>
 
             <div className="row">
               <b>Total Received</b>
               <span>
-                {btc(r.balance?.funded || 0)}
+                {btc(
+                  btcWallet.balance?.funded || 0
+                )}
               </span>
             </div>
 
             <div className="row">
               <b>Total Spent</b>
               <span>
-                {btc(r.balance?.spent || 0)}
+                {btc(
+                  btcWallet.balance?.spent || 0
+                )}
               </span>
             </div>
-
-          </section>
-
-
-          {/* WALLET ACTIVITY */}
-
-          <section className="panel">
-
-            <h2>Wallet Activity</h2>
 
             <div className="row">
               <b>Incoming Transactions</b>
               <span>
-                {r.activity?.funded_transactions || 0}
+                {btcWallet.activity
+                  ?.funded_transactions || 0}
               </span>
             </div>
 
             <div className="row">
               <b>Outgoing Transactions</b>
               <span>
-                {r.activity?.spent_transactions || 0}
+                {btcWallet.activity
+                  ?.spent_transactions || 0}
               </span>
             </div>
 
             <div className="row">
               <b>Confirmed Transactions</b>
               <span>
-                {r.activity?.confirmed_transactions || 0}
+                {btcWallet.activity
+                  ?.confirmed_transactions || 0}
+              </span>
+            </div>
+
+            <div className="row">
+              <b>Status</b>
+              <span className="liveDot">
+                ● LIVE
               </span>
             </div>
 
           </section>
 
 
-          {/* TRANSACTION HISTORY */}
-
           <section className="panel">
 
-            <h2>Transaction History</h2>
+            <h2>
+              Bitcoin Transaction History
+            </h2>
 
-            {r.transactions?.length ? (
+            {transactions.length ? (
 
               <div className="table">
 
@@ -762,74 +922,420 @@ function WalletSearch(){
                   <span>Timestamp</span>
                 </div>
 
-                {r.transactions
-                  .slice(0,20)
-                  .map((tx:any,i:number)=>{
+                {transactions
+                  .slice(0, 20)
+                  .map(
+                    (tx: any, i: number) => {
 
-                    const txHash =
-                      tx.hash ||
-                      tx.txid ||
-                      "";
+                      const txHash =
+                        tx.hash ||
+                        tx.txid ||
+                        "";
 
-                    const blockHeight =
-                      tx.block_height ??
-                      tx.status?.block_height ??
-                      null;
+                      const blockHeight =
+                        tx.block_height ??
+                        tx.status?.block_height ??
+                        null;
 
-                    const blockTime =
-                      tx.time ??
-                      tx.block_time ??
-                      tx.status?.block_time ??
-                      null;
+                      const blockTime =
+                        tx.time ??
+                        tx.block_time ??
+                        tx.status?.block_time ??
+                        null;
 
-                    const confirmed =
-                      blockHeight !== null ||
-                      tx.confirmed === true ||
-                      tx.status?.confirmed === true;
+                      const confirmed =
+                        blockHeight !== null ||
+                        tx.confirmed === true ||
+                        tx.status?.confirmed === true;
 
-                    return (
-                      <div
-                        className="tr"
-                        key={txHash || i}
-                      >
+                      return (
+                        <div
+                          className="tr"
+                          key={
+                            txHash || i
+                          }
+                        >
 
-                        <span>
-                          {txHash
-                            ? txHash.slice(0,16)+"..."
-                            : "Unknown"}
-                        </span>
+                          <span
+                            title={txHash}
+                            style={{
+                              fontFamily:
+                                "monospace"
+                            }}
+                          >
+                            {txHash
+                              ? txHash.slice(
+                                  0,
+                                  16
+                                ) + "..."
+                              : "Unknown"}
+                          </span>
 
-                        <span className="liveDot">
-                          ●{" "}
-                          {confirmed
-                            ? "CONFIRMED"
-                            : "UNCONFIRMED"}
-                        </span>
+                          <span className="liveDot">
+                            ●{" "}
+                            {confirmed
+                              ? "CONFIRMED"
+                              : "UNCONFIRMED"}
+                          </span>
 
-                        <span>
-                          {blockHeight !== null
-                            ? blockHeight
-                            : "Pending"}
-                        </span>
+                          <span>
+                            {blockHeight !== null
+                              ? blockHeight
+                              : "Pending"}
+                          </span>
 
-                        <span>
-                          {blockTime
-                            ? new Date(
-                                blockTime * 1000
-                              ).toLocaleString()
-                            : "Unknown"}
-                        </span>
+                          <span>
+                            {blockTime
+                              ? new Date(
+                                  blockTime * 1000
+                                ).toLocaleString()
+                              : "Unknown"}
+                          </span>
 
-                      </div>
-                    );
-                  })}
+                        </div>
+                      );
+                    }
+                  )}
 
               </div>
 
             ) : (
 
               <div className="empty">
-                No transactions found.
+                No Bitcoin transactions found.
+              </div>
+
+            )}
+
+          </section>
+
+        </>
+      )}
+
+
+      {/* =================================================
+          ETHEREUM RESULTS
+      ================================================= */}
+
+      {wallet?.type === "ethereum" &&
+        ethWallet && (
+        <>
+
+          <div className="cards">
+
+            <Card
+              title="ETH BALANCE"
+              value={`${Number(
+                ethWallet.balance_eth || 0
+              ).toFixed(6)} ETH`}
+              sub="Current Mainnet balance"
+            />
+
+            <Card
+              title="TRANSACTIONS SENT"
+              value={String(
+                ethWallet.transaction_count ?? 0
+              )}
+              sub="Account nonce"
+            />
+
+            <Card
+              title="TRANSACTION HISTORY"
+              value={String(
+                transactions.length
+              )}
+              sub="Indexed transactions"
+            />
+
+            <Card
+              title="TOKEN TRANSFERS"
+              value={String(
+                tokens.length
+              )}
+              sub="ERC-20 transfers"
+            />
+
+          </div>
+
+
+          <section className="panel">
+
+            <h2>
+              Ethereum Wallet Details
+            </h2>
+
+            <div className="row">
+              <b>Address</b>
+              <span
+                style={{
+                  fontFamily: "monospace",
+                  wordBreak: "break-all"
+                }}
+              >
+                {ethWallet.address}
+              </span>
+            </div>
+
+            <div className="row">
+              <b>ETH Balance</b>
+              <span>
+                {ethWallet.balance_eth} ETH
+              </span>
+            </div>
+
+            <div className="row">
+              <b>Balance Wei</b>
+              <span>
+                {ethWallet.balance_wei}
+              </span>
+            </div>
+
+            <div className="row">
+              <b>Transaction Count</b>
+              <span>
+                {ethWallet.transaction_count}
+              </span>
+            </div>
+
+            <div className="row">
+              <b>Network</b>
+              <span>
+                Ethereum Mainnet
+              </span>
+            </div>
+
+            <div className="row">
+              <b>Data Source</b>
+              <span>
+                PublicNode Ethereum JSON-RPC
+              </span>
+            </div>
+
+            <div className="row">
+              <b>Status</b>
+              <span className="liveDot">
+                ● LIVE
+              </span>
+            </div>
+
+          </section>
+
+
+          {/* ETH TRANSACTIONS */}
+
+          <section className="panel">
+
+            <h2>
+              Ethereum Transaction History
+            </h2>
+
+            {transactions.length ? (
+
+              <div className="table">
+
+                <div className="thead">
+                  <span>Direction</span>
+                  <span>From</span>
+                  <span>To</span>
+                  <span>Value</span>
+                  <span>Status</span>
+                </div>
+
+                {transactions
+                  .slice(0, 50)
+                  .map(
+                    (tx: any, i: number) => (
+
+                      <div
+                        className="tr"
+                        key={
+                          tx.hash || i
+                        }
+                      >
+
+                        <span>
+                          <b
+                            className={
+                              tx.direction ===
+                              "INCOMING"
+                                ? "up"
+                                : "down"
+                            }
+                          >
+                            {tx.direction ||
+                              "UNKNOWN"}
+                          </b>
+                        </span>
+
+                        <span
+                          title={tx.from}
+                          style={{
+                            fontFamily:
+                              "monospace"
+                          }}
+                        >
+                          {tx.from
+                            ? tx.from.slice(
+                                0,
+                                8
+                              ) +
+                              "..." +
+                              tx.from.slice(-6)
+                            : "—"}
+                        </span>
+
+                        <span
+                          title={tx.to}
+                          style={{
+                            fontFamily:
+                              "monospace"
+                          }}
+                        >
+                          {tx.to
+                            ? tx.to.slice(
+                                0,
+                                8
+                              ) +
+                              "..." +
+                              tx.to.slice(-6)
+                            : "—"}
+                        </span>
+
+                        <span>
+                          {tx.value ?? "0"}
+                        </span>
+
+                        <span>
+                          {tx.success
+                            ? "SUCCESS"
+                            : "FAILED"}
+                        </span>
+
+                      </div>
+
+                    )
+                  )}
+
+              </div>
+
+            ) : (
+
+              <div className="empty">
+                No Ethereum transaction history
+                returned.
+              </div>
+
+            )}
+
+          </section>
+
+
+          {/* ERC-20 */}
+
+          <section className="panel">
+
+            <h2>
+              ERC-20 Token Transfers
+            </h2>
+
+            {tokens.length ? (
+
+              <div className="table">
+
+                <div className="thead">
+                  <span>Direction</span>
+                  <span>Token</span>
+                  <span>Symbol</span>
+                  <span>From</span>
+                  <span>To</span>
+                  <span>Value</span>
+                </div>
+
+                {tokens
+                  .slice(0, 50)
+                  .map(
+                    (tx: any, i: number) => (
+
+                      <div
+                        className="tr"
+                        key={
+                          tx.hash || i
+                        }
+                      >
+
+                        <span>
+                          <b
+                            className={
+                              tx.direction ===
+                              "INCOMING"
+                                ? "up"
+                                : "down"
+                            }
+                          >
+                            {tx.direction ||
+                              "UNKNOWN"}
+                          </b>
+                        </span>
+
+                        <span>
+                          {tx.token ||
+                            "Unknown"}
+                        </span>
+
+                        <b>
+                          {tx.symbol ||
+                            "—"}
+                        </b>
+
+                        <span
+                          title={tx.from}
+                          style={{
+                            fontFamily:
+                              "monospace"
+                          }}
+                        >
+                          {tx.from
+                            ? tx.from.slice(
+                                0,
+                                8
+                              ) +
+                              "..." +
+                              tx.from.slice(-6)
+                            : "—"}
+                        </span>
+
+                        <span
+                          title={tx.to}
+                          style={{
+                            fontFamily:
+                              "monospace"
+                          }}
+                        >
+                          {tx.to
+                            ? tx.to.slice(
+                                0,
+                                8
+                              ) +
+                              "..." +
+                              tx.to.slice(-6)
+                            : "—"}
+                        </span>
+
+                        <span>
+                          {tx.value ?? "0"}
+                        </span>
+
+                      </div>
+
+                    )
+                  )}
+
+              </div>
+
+            ) : (
+
+              <div className="empty">
+                No ERC-20 token transfers found.
               </div>
 
             )}
