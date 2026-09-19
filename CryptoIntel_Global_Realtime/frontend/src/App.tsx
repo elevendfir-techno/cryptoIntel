@@ -1396,17 +1396,20 @@ function Blockchain(){
     </span>
 
     <span>
-      {b.txIndexes?.length ?? 0}
-    </span>
+  {b.n_tx ?? 0}
+</span>
 
-    <span>
-      —
-    </span>
+<span>
+  {b.size
+    ? b.size.toLocaleString()
+    : "—"}
+</span>
 
-    <span>
-      —
-    </span>
-
+<span>
+  {b.weight
+    ? b.weight.toLocaleString()
+    : "—"}
+</span>
     <span className="liveDot">
       ● LIVE
     </span>

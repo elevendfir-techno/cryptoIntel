@@ -4,7 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.services.state import state
 from app.api.markets import router as markets_router
 from app.api.alerts import router as alerts_router
-from app.api.blockchain import router as blockchain_router
+from app.api.blockchain import (
+    router as blockchain_router,
+    start_blockchain_collector
+)
 from app.api.wallets import router as wallets_router
 from app.api.fundflow import router as fundflow_router
 from app.api.detection import router as detection_router
@@ -63,3 +66,7 @@ async def startup():
         asyncio.create_task(run_kraken()),
         asyncio.create_task(run_okx()),
     ]
+
+    app.state.collectors.append(
+        start_blockchain_collector()
+    )
