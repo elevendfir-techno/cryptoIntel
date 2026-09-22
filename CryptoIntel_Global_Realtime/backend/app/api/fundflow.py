@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 import asyncio
 import time
 import httpx
+import re
 
 
 router = APIRouter(
@@ -11,10 +12,26 @@ router = APIRouter(
 
 
 # =========================================================
-# BLOCKCHAIN.COM
+# BLOCKCHAIN.COM — BITCOIN
 # =========================================================
 
 BITCOIN_API = "https://blockchain.info"
+
+
+# =========================================================
+# BLOCKSCOUT — ETHEREUM
+# =========================================================
+
+ETHEREUM_API = "https://eth.blockscout.com/api/v2"
+ETHEREUM_MAX_TXS = 10
+ETHEREUM_MAX_TOKEN_TRANSFERS = 10
+
+# =========================================================
+# ETHEREUM ADDRESS VALIDATION
+# =========================================================
+
+def is_ethereum_address(address: str) -> bool:
+    return bool(re.fullmatch(r"0x[a-fA-F0-9]{40}", address))
 
 
 # =========================================================
@@ -136,6 +153,311 @@ async def get_wallet_data(client, address):
 
     return data, False, False
 
+# =========================================================
+# ETHEREUM TRANSACTIONS
+# =========================================================
+
+async def get_ethereum_transactions(client, address):
+    response = await client.get(
+        f"{ETHEREUM_API}/addresses/{address}/transactions",
+        params={
+            "items_count": ETHEREUM_MAX_TXS
+        }
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    return data.get("items", [])
+
+# =========================================================
+# ETHEREUM TOKEN TRANSFERS
+# =========================================================
+
+async def get_ethereum_token_transfers(client, address):
+    response = await client.get(
+        f"{ETHEREUM_API}/addresses/{address}/token-transfers",
+        params={
+            "items_count": ETHEREUM_MAX_TOKEN_TRANSFERS
+        }
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    return data.get("items", [])
+
+# =========================================================
+# ETHEREUM FUND FLOW
+# =========================================================
+
+async def ethereum_fundflow(client, root_address, hops):
+    nodes = {}
+    edges = []
+    visited = set()
+    queue = []
+
+    # Root wallet
+    nodes[root_address] = {
+        "id": root_address,
+        "address": root_address,
+        "network": "Ethereum",
+        "hop": 0,
+        "type": "wallet"
+    }
+
+    queue.append((root_address, 0))
+    visited.add(root_address)
+
+    while queue:
+
+        current_address, current_hop = queue.pop(0)
+
+        if current_hop >= hops:
+            continue
+
+        # -------------------------------------------------
+        # NATIVE ETH TRANSACTIONS
+        # -------------------------------------------------
+
+        try:
+            transactions = await get_ethereum_transactions(
+                client,
+                current_address
+            )
+        except Exception:
+            transactions = []
+
+        for tx in transactions:
+
+            from_data = tx.get("from") or {}
+            to_data = tx.get("to") or {}
+
+            from_address = (
+                from_data.get("hash")
+                if isinstance(from_data, dict)
+                else None
+            )
+
+            to_address = (
+                to_data.get("hash")
+                if isinstance(to_data, dict)
+                else None
+            )
+
+            tx_hash = (
+                tx.get("hash")
+                or tx.get("transaction_hash")
+            )
+
+            if not from_address or not to_address:
+                continue
+
+            if not tx_hash:
+                tx_hash = "unknown"
+
+            # Blockscout native value is normally in wei
+            raw_value = tx.get("value", "0")
+
+            try:
+                value_wei = int(raw_value)
+            except (TypeError, ValueError):
+                value_wei = 0
+
+            value_eth = value_wei / 10**18
+
+            # Determine direction relative to current wallet
+            if from_address.lower() == current_address.lower():
+                counterparty = to_address
+                direction = "OUTGOING"
+            else:
+                counterparty = from_address
+                direction = "INCOMING"
+
+            # Add counterparty node
+            if counterparty not in nodes:
+                nodes[counterparty] = {
+                    "id": counterparty,
+                    "address": counterparty,
+                    "network": "Ethereum",
+                    "hop": current_hop + 1,
+                    "type": "wallet"
+                }
+
+            # Add edge
+            edges.append({
+                "id": f"eth-{tx_hash}-{current_address}",
+                "source": from_address,
+                "target": to_address,
+                "transaction_hash": tx_hash,
+                "asset": "ETH",
+                "value": value_eth,
+                "value_raw": str(raw_value),
+                "direction": direction,
+                "hop": current_hop + 1,
+                "type": "native"
+            })
+
+            # Queue next wallet
+            if (
+                counterparty not in visited
+                and current_hop + 1 < hops
+            ):
+                visited.add(counterparty)
+                queue.append(
+                    (counterparty, current_hop + 1)
+                )
+
+        # -------------------------------------------------
+        # ERC-20 TOKEN TRANSFERS
+        # -------------------------------------------------
+
+        try:
+            token_transfers = await get_ethereum_token_transfers(
+                client,
+                current_address
+            )
+        except Exception:
+            token_transfers = []
+
+        for transfer in token_transfers:
+
+            from_data = transfer.get("from") or {}
+            to_data = transfer.get("to") or {}
+
+            from_address = (
+                from_data.get("hash")
+                if isinstance(from_data, dict)
+                else None
+            )
+
+            to_address = (
+                to_data.get("hash")
+                if isinstance(to_data, dict)
+                else None
+            )
+
+            if not from_address or not to_address:
+                continue
+
+            tx_hash = (
+                transfer.get("transaction_hash")
+                or transfer.get("tx_hash")
+                or transfer.get("hash")
+                or "unknown"
+            )
+
+            # -------------------------------------------------
+            # TOKEN INFORMATION
+            # -------------------------------------------------
+
+            token_data = transfer.get("token") or {}
+
+            if not isinstance(token_data, dict):
+                token_data = {}
+
+            token_name = token_data.get("name")
+            token_symbol = token_data.get("symbol")
+            token_address = token_data.get("address")
+
+            if not token_address:
+                token_address = token_data.get("hash")
+
+            # -------------------------------------------------
+            # TOKEN AMOUNT
+            # -------------------------------------------------
+
+            total_data = transfer.get("total") or {}
+
+            if isinstance(total_data, dict):
+                raw_token_value = (
+                    total_data.get("value")
+                    or total_data.get("amount")
+                    or "0"
+                )
+            else:
+                raw_token_value = str(total_data)
+
+            decimals = (
+                token_data.get("decimals")
+                or transfer.get("decimals")
+                or 0
+            )
+
+            try:
+                decimals = int(decimals)
+            except (TypeError, ValueError):
+                decimals = 0
+
+            try:
+                token_value = int(raw_token_value) / (
+                    10 ** decimals
+                )
+            except (TypeError, ValueError, OverflowError):
+                token_value = 0
+
+            # Direction
+            if from_address.lower() == current_address.lower():
+                counterparty = to_address
+                direction = "OUTGOING"
+            else:
+                counterparty = from_address
+                direction = "INCOMING"
+
+            # Add token counterparty
+            if counterparty not in nodes:
+                nodes[counterparty] = {
+                    "id": counterparty,
+                    "address": counterparty,
+                    "network": "Ethereum",
+                    "hop": current_hop + 1,
+                    "type": "wallet"
+                }
+
+            # Add ERC-20 edge
+            edges.append({
+                "id": f"erc20-{tx_hash}-{current_address}",
+                "source": from_address,
+                "target": to_address,
+                "transaction_hash": tx_hash,
+                "asset": "ERC-20",
+                "token_name": token_name,
+                "token_symbol": token_symbol,
+                "token_address": token_address,
+                "value": token_value,
+                "value_raw": str(raw_token_value),
+                "decimals": decimals,
+                "direction": direction,
+                "hop": current_hop + 1,
+                "type": "token"
+            })
+
+            # Queue next wallet
+            if (
+                counterparty not in visited
+                and current_hop + 1 < hops
+            ):
+                visited.add(counterparty)
+                queue.append(
+                    (counterparty, current_hop + 1)
+                )
+
+    return {
+        "network": "Ethereum",
+        "status": "LIVE",
+        "root_wallet": root_address,
+        "hops_requested": hops,
+        "hops_traced": hops,
+        "wallets": len(nodes),
+        "edges": len(edges),
+        "transactions": len(edges),
+        "nodes": list(nodes.values()),
+        "edges_data": edges,
+        "source": "Blockscout Ethereum API"
+    }
+
 
 # =========================================================
 # FUND FLOW
@@ -152,12 +474,59 @@ async def fundflow(
     # NETWORK VALIDATION
     # =====================================================
 
-    if network.lower() != "bitcoin":
+    network = network.lower()
+
+    if network not in ("bitcoin", "ethereum"):
 
         raise HTTPException(
             status_code=400,
-            detail="Currently only Bitcoin fund flow is live."
+            detail=(
+                "Supported fund-flow networks: "
+                "Bitcoin and Ethereum."
+            )
         )
+
+    # =====================================================
+    # ETHEREUM FUND FLOW
+    # =====================================================
+
+    if network == "ethereum":
+
+        if not is_ethereum_address(address):
+
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid Ethereum address."
+            )
+
+        hops = max(
+            1,
+            min(hops, MAX_HOPS)
+        )
+
+        try:
+
+            async with httpx.AsyncClient(
+                timeout=30
+            ) as client:
+
+                return await ethereum_fundflow(
+                    client,
+                    address,
+                    hops
+                )
+
+        except HTTPException:
+            raise
+
+        except Exception as e:
+
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Ethereum fund flow lookup failed: {str(e)}"
+                )
+            )
 
 
     # =====================================================
