@@ -194,12 +194,14 @@ async def get_ethereum_token_transfers(client, address):
 # =========================================================
 
 async def ethereum_fundflow(client, root_address, hops):
+
     nodes = {}
     edges = []
-    visited = set()
-    queue = []
 
-    # Root wallet
+    # -----------------------------------------------------
+    # ROOT WALLET
+    # -----------------------------------------------------
+
     nodes[root_address] = {
         "id": root_address,
         "address": root_address,
@@ -208,27 +210,54 @@ async def ethereum_fundflow(client, root_address, hops):
         "type": "wallet"
     }
 
-    queue.append((root_address, 0))
-    visited.add(root_address)
+    # -----------------------------------------------------
+    # INVESTIGATION QUEUE
+    # -----------------------------------------------------
+
+    queue = [(root_address, 0)]
+    visited = {root_address}
+
+    # Track how many wallets are allowed at each hop
+    wallets_per_hop = {
+        0: 1
+    }
+
+    # -----------------------------------------------------
+    # FUND FLOW INVESTIGATION
+    # -----------------------------------------------------
 
     while queue:
 
         current_address, current_hop = queue.pop(0)
 
+        # Stop when requested hop depth is reached
         if current_hop >= hops:
             continue
 
-        # -------------------------------------------------
+        next_hop = current_hop + 1
+
+        if next_hop not in wallets_per_hop:
+            wallets_per_hop[next_hop] = 0
+
+        # =================================================
         # NATIVE ETH TRANSACTIONS
-        # -------------------------------------------------
+        # =================================================
 
         try:
+
             transactions = await get_ethereum_transactions(
                 client,
                 current_address
             )
+
         except Exception:
+
             transactions = []
+
+        # Maximum transactions per wallet
+        transactions = transactions[
+            :MAX_TXS_PER_WALLET
+        ]
 
         for tx in transactions:
 
@@ -247,18 +276,19 @@ async def ethereum_fundflow(client, root_address, hops):
                 else None
             )
 
-            tx_hash = (
-                tx.get("hash")
-                or tx.get("transaction_hash")
-            )
-
             if not from_address or not to_address:
                 continue
 
-            if not tx_hash:
-                tx_hash = "unknown"
+            tx_hash = (
+                tx.get("hash")
+                or tx.get("transaction_hash")
+                or "unknown"
+            )
 
-            # Blockscout native value is normally in wei
+            # -------------------------------------------------
+            # ETH VALUE
+            # -------------------------------------------------
+
             raw_value = tx.get("value", "0")
 
             try:
@@ -268,59 +298,124 @@ async def ethereum_fundflow(client, root_address, hops):
 
             value_eth = value_wei / 10**18
 
-            # Determine direction relative to current wallet
+            # -------------------------------------------------
+            # DIRECTION
+            # -------------------------------------------------
+
             if from_address.lower() == current_address.lower():
+
                 counterparty = to_address
                 direction = "OUTGOING"
+
             else:
+
                 counterparty = from_address
                 direction = "INCOMING"
 
-            # Add counterparty node
-            if counterparty not in nodes:
-                nodes[counterparty] = {
-                    "id": counterparty,
-                    "address": counterparty,
-                    "network": "Ethereum",
-                    "hop": current_hop + 1,
-                    "type": "wallet"
-                }
+            # -------------------------------------------------
+            # ADD COUNTERPARTY NODE
+            # -------------------------------------------------
 
-            # Add edge
+            if counterparty not in nodes:
+
+                # Only add new wallets if hop limit allows it
+                if wallets_per_hop[next_hop] < MAX_WALLETS_PER_HOP:
+
+                    nodes[counterparty] = {
+                        "id": counterparty,
+                        "address": counterparty,
+                        "network": "Ethereum",
+                        "hop": next_hop,
+                        "type": "wallet"
+                    }
+
+                    wallets_per_hop[next_hop] += 1
+
+                else:
+                    # Wallet limit reached.
+                    # Do not expand this counterparty.
+                    continue
+
+            # -------------------------------------------------
+            # ADD ETH EDGE
+            # -------------------------------------------------
+
             edges.append({
-                "id": f"eth-{tx_hash}-{current_address}",
-                "source": from_address,
-                "target": to_address,
-                "transaction_hash": tx_hash,
-                "asset": "ETH",
-                "value": value_eth,
-                "value_raw": str(raw_value),
-                "direction": direction,
-                "hop": current_hop + 1,
-                "type": "native"
+
+                "id":
+                    f"eth-{tx_hash}-{current_address}",
+
+                "source":
+                    from_address,
+
+                "target":
+                    to_address,
+
+                "transaction_hash":
+                    tx_hash,
+
+                "asset":
+                    "ETH",
+
+                "value":
+                    value_eth,
+
+                "value_raw":
+                    str(raw_value),
+
+                "direction":
+                    direction,
+
+                "hop":
+                    next_hop,
+
+                "type":
+                    "native"
+
             })
 
-            # Queue next wallet
+            # -------------------------------------------------
+            # QUEUE NEXT WALLET
+            # -------------------------------------------------
+
             if (
-                counterparty not in visited
-                and current_hop + 1 < hops
+
+                counterparty in nodes
+
+                and counterparty not in visited
+
+                and next_hop < hops
+
             ):
+
                 visited.add(counterparty)
+
                 queue.append(
-                    (counterparty, current_hop + 1)
+                    (
+                        counterparty,
+                        next_hop
+                    )
                 )
 
-        # -------------------------------------------------
+        # =================================================
         # ERC-20 TOKEN TRANSFERS
-        # -------------------------------------------------
+        # =================================================
 
         try:
+
             token_transfers = await get_ethereum_token_transfers(
                 client,
                 current_address
             )
+
         except Exception:
+
             token_transfers = []
+
+        # Maximum token transfers per wallet
+        token_transfers = token_transfers[
+            :ETHEREUM_MAX_TOKEN_TRANSFERS
+        ]
 
         for transfer in token_transfers:
 
@@ -360,24 +455,28 @@ async def ethereum_fundflow(client, root_address, hops):
 
             token_name = token_data.get("name")
             token_symbol = token_data.get("symbol")
-            token_address = token_data.get("address")
 
-            if not token_address:
-                token_address = token_data.get("hash")
+            token_address = (
+                token_data.get("address")
+                or token_data.get("hash")
+            )
 
             # -------------------------------------------------
-            # TOKEN AMOUNT
+            # TOKEN VALUE
             # -------------------------------------------------
 
             total_data = transfer.get("total") or {}
 
             if isinstance(total_data, dict):
+
                 raw_token_value = (
                     total_data.get("value")
                     or total_data.get("amount")
                     or "0"
                 )
+
             else:
+
                 raw_token_value = str(total_data)
 
             decimals = (
@@ -387,75 +486,275 @@ async def ethereum_fundflow(client, root_address, hops):
             )
 
             try:
+
                 decimals = int(decimals)
+
             except (TypeError, ValueError):
+
                 decimals = 0
 
             try:
-                token_value = int(raw_token_value) / (
-                    10 ** decimals
+
+                token_value = (
+                    int(raw_token_value)
+                    / (10 ** decimals)
                 )
-            except (TypeError, ValueError, OverflowError):
+
+            except (
+                TypeError,
+                ValueError,
+                OverflowError
+            ):
+
                 token_value = 0
 
-            # Direction
+            # -------------------------------------------------
+            # DIRECTION
+            # -------------------------------------------------
+
             if from_address.lower() == current_address.lower():
+
                 counterparty = to_address
                 direction = "OUTGOING"
+
             else:
+
                 counterparty = from_address
                 direction = "INCOMING"
 
-            # Add token counterparty
-            if counterparty not in nodes:
-                nodes[counterparty] = {
-                    "id": counterparty,
-                    "address": counterparty,
-                    "network": "Ethereum",
-                    "hop": current_hop + 1,
-                    "type": "wallet"
-                }
+            # -------------------------------------------------
+            # ADD TOKEN COUNTERPARTY
+            # -------------------------------------------------
 
-            # Add ERC-20 edge
+            if counterparty not in nodes:
+
+                if wallets_per_hop[next_hop] < MAX_WALLETS_PER_HOP:
+
+                    nodes[counterparty] = {
+                        "id": counterparty,
+                        "address": counterparty,
+                        "network": "Ethereum",
+                        "hop": next_hop,
+                        "type": "wallet"
+                    }
+
+                    wallets_per_hop[next_hop] += 1
+
+                else:
+
+                    continue
+
+            # -------------------------------------------------
+            # ADD TOKEN EDGE
+            # -------------------------------------------------
+
             edges.append({
-                "id": f"erc20-{tx_hash}-{current_address}",
-                "source": from_address,
-                "target": to_address,
-                "transaction_hash": tx_hash,
-                "asset": "ERC-20",
-                "token_name": token_name,
-                "token_symbol": token_symbol,
-                "token_address": token_address,
-                "value": token_value,
-                "value_raw": str(raw_token_value),
-                "decimals": decimals,
-                "direction": direction,
-                "hop": current_hop + 1,
-                "type": "token"
+
+                "id":
+                    f"erc20-{tx_hash}-{current_address}",
+
+                "source":
+                    from_address,
+
+                "target":
+                    to_address,
+
+                "transaction_hash":
+                    tx_hash,
+
+                "asset":
+                    "ERC-20",
+
+                "token_name":
+                    token_name,
+
+                "token_symbol":
+                    token_symbol,
+
+                "token_address":
+                    token_address,
+
+                "value":
+                    token_value,
+
+                "value_raw":
+                    str(raw_token_value),
+
+                "decimals":
+                    decimals,
+
+                "direction":
+                    direction,
+
+                "hop":
+                    next_hop,
+
+                "type":
+                    "token"
+
             })
 
-            # Queue next wallet
+            # -------------------------------------------------
+            # QUEUE NEXT WALLET
+            # -------------------------------------------------
+
             if (
-                counterparty not in visited
-                and current_hop + 1 < hops
+
+                counterparty in nodes
+
+                and counterparty not in visited
+
+                and next_hop < hops
+
             ):
+
                 visited.add(counterparty)
+
                 queue.append(
-                    (counterparty, current_hop + 1)
+                    (
+                        counterparty,
+                        next_hop
+                    )
                 )
 
+    # =========================================================
+    # REMOVE DUPLICATE EDGES
+    # =========================================================
+
+    unique_edges = {}
+
+    for edge in edges:
+
+        key = (
+            edge.get("source"),
+            edge.get("target"),
+            edge.get("transaction_hash"),
+            edge.get("type"),
+            edge.get("value_raw")
+        )
+
+        unique_edges[key] = edge
+
+    final_edges = list(
+        unique_edges.values()
+    )
+
+    # =========================================================
+    # CALCULATE UNIQUE TRANSACTIONS
+    # =========================================================
+
+    unique_transaction_hashes = {
+
+        edge.get("transaction_hash")
+
+        for edge in final_edges
+
+        if edge.get("transaction_hash")
+        and edge.get("transaction_hash") != "unknown"
+
+    }
+
+    # =========================================================
+    # CALCULATE ACTUAL HOPS
+    # =========================================================
+
+    hops_traced = max(
+
+        [
+            node.get("hop", 0)
+            for node in nodes.values()
+        ],
+
+        default=0
+
+    )
+
+    hops_traced = min(
+        hops,
+        hops_traced
+    )
+
+    # =========================================================
+    # COUNT TRANSFER TYPES
+    # =========================================================
+
+    native_edges = [
+
+        edge
+        for edge in final_edges
+        if edge.get("type") == "native"
+
+    ]
+
+    token_edges = [
+
+        edge
+        for edge in final_edges
+        if edge.get("type") == "token"
+
+    ]
+
+    # =========================================================
+    # FINAL RESPONSE
+    # =========================================================
+
     return {
-        "network": "Ethereum",
-        "status": "LIVE",
-        "root_wallet": root_address,
-        "hops_requested": hops,
-        "hops_traced": hops,
-        "wallets": len(nodes),
-        "edges": len(edges),
-        "transactions": len(edges),
-        "nodes": list(nodes.values()),
-        "edges_data": edges,
-        "source": "Blockscout Ethereum API"
+
+        "network":
+            "Ethereum",
+
+        "status":
+            "LIVE",
+
+        "root_wallet":
+            root_address,
+
+        "hops_requested":
+            hops,
+
+        "hops_traced":
+            hops_traced,
+
+        "wallets":
+            len(nodes),
+
+        "edges":
+            len(final_edges),
+
+        "transactions":
+            len(unique_transaction_hashes),
+
+        "native_eth_transfers":
+            len(native_edges),
+
+        "erc20_transfers":
+            len(token_edges),
+
+        "nodes":
+            list(nodes.values()),
+
+        "edges_data":
+            final_edges,
+
+        "limits": {
+
+            "max_hops":
+                MAX_HOPS,
+
+            "max_wallets_per_hop":
+                MAX_WALLETS_PER_HOP,
+
+            "max_transactions_per_wallet":
+                MAX_TXS_PER_WALLET,
+
+            "max_token_transfers_per_wallet":
+                ETHEREUM_MAX_TOKEN_TRANSFERS
+
+        },
+
+        "source":
+            "Blockscout Ethereum API"
+
     }
 
 
