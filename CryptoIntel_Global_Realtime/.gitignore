@@ -1,0 +1,5 @@
+
+# Local backup files
+frontend/src/*.backup
+frontend/src/*.before-recovery
+frontend/src/App.tsx.backup-before-fix

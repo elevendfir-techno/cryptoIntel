@@ -23,15 +23,25 @@ BITCOIN_API = "https://blockchain.info"
 # =========================================================
 
 ETHEREUM_API = "https://eth.blockscout.com/api/v2"
-ETHEREUM_MAX_TXS = 10
-ETHEREUM_MAX_TOKEN_TRANSFERS = 10
+
+ETHEREUM_PAGE_SIZE = 50
+ETHEREUM_MAX_PAGES = 5
+
+ETHEREUM_MAX_TXS = 100
+ETHEREUM_MAX_TOKEN_TRANSFERS = 100
+
 
 # =========================================================
 # ETHEREUM ADDRESS VALIDATION
 # =========================================================
 
 def is_ethereum_address(address: str) -> bool:
-    return bool(re.fullmatch(r"0x[a-fA-F0-9]{40}", address))
+    return bool(
+        re.fullmatch(
+            r"0x[a-fA-F0-9]{40}",
+            address
+        )
+    )
 
 
 # =========================================================
@@ -55,43 +65,23 @@ RETRY_AFTER_429 = 30.0
 # IN-MEMORY CACHE
 # =========================================================
 
-# address ->
-# {
-#     "data": {...},
-#     "expires": timestamp
-# }
-
 WALLET_CACHE = {}
 
 CACHE_TTL = 300
 
 
 # =========================================================
-# WALLET DATA
+# BITCOIN WALLET DATA
 # =========================================================
 
 async def get_wallet_data(client, address):
-    """
-    Get Bitcoin wallet data from Blockchain.com.
-
-    Returns:
-        (data, rate_limited, from_cache)
-    """
 
     now = time.time()
-
-    # -----------------------------------------------------
-    # CACHE CHECK
-    # -----------------------------------------------------
 
     cached = WALLET_CACHE.get(address)
 
     if cached and cached["expires"] > now:
         return cached["data"], False, True
-
-    # -----------------------------------------------------
-    # API REQUEST
-    # -----------------------------------------------------
 
     response = await client.get(
         f"{BITCOIN_API}/rawaddr/{address}",
@@ -99,10 +89,6 @@ async def get_wallet_data(client, address):
             "limit": MAX_TXS_PER_WALLET
         }
     )
-
-    # -----------------------------------------------------
-    # RATE LIMIT
-    # -----------------------------------------------------
 
     if response.status_code == 429:
 
@@ -123,28 +109,12 @@ async def get_wallet_data(client, address):
         if response.status_code == 429:
             return None, True, False
 
-    # -----------------------------------------------------
-    # NOT FOUND
-    # -----------------------------------------------------
-
     if response.status_code == 404:
         return None, False, False
 
-    # -----------------------------------------------------
-    # OTHER HTTP ERRORS
-    # -----------------------------------------------------
-
     response.raise_for_status()
 
-    # -----------------------------------------------------
-    # PARSE RESPONSE
-    # -----------------------------------------------------
-
     data = response.json()
-
-    # -----------------------------------------------------
-    # SAVE CACHE
-    # -----------------------------------------------------
 
     WALLET_CACHE[address] = {
         "data": data,
@@ -153,54 +123,147 @@ async def get_wallet_data(client, address):
 
     return data, False, False
 
+
+# =========================================================
+# BLOCKSCOUT PAGINATION HELPER
+# =========================================================
+
+async def blockscout_paginated_request(
+    client,
+    endpoint,
+    max_pages=ETHEREUM_MAX_PAGES
+):
+    """
+    Fetch Blockscout V2 paginated data.
+
+    Blockscout returns:
+        items
+        next_page_params
+
+    We continue requesting pages until:
+        - no next_page_params
+        - max_pages reached
+        - no items
+    """
+
+    all_items = []
+
+    page_params = None
+
+    for _ in range(max_pages):
+
+        params = {}
+
+        if page_params:
+            params.update(page_params)
+
+        else:
+            params["items_count"] = ETHEREUM_PAGE_SIZE
+
+        response = await client.get(
+            f"{ETHEREUM_API}{endpoint}",
+            params=params
+        )
+
+        response.raise_for_status()
+
+        data = response.json()
+
+        items = data.get(
+            "items",
+            []
+        )
+
+        if not isinstance(items, list):
+            items = []
+
+        all_items.extend(items)
+
+        next_params = data.get(
+            "next_page_params"
+        )
+
+        if not next_params:
+            break
+
+        if not isinstance(next_params, dict):
+            break
+
+        page_params = next_params
+
+        if not items:
+            break
+
+    return all_items
+
+
 # =========================================================
 # ETHEREUM TRANSACTIONS
 # =========================================================
 
-async def get_ethereum_transactions(client, address):
-    response = await client.get(
-        f"{ETHEREUM_API}/addresses/{address}/transactions",
-        params={
-            "items_count": ETHEREUM_MAX_TXS
-        }
+async def get_ethereum_transactions(
+    client,
+    address
+):
+
+    transactions = await blockscout_paginated_request(
+        client,
+        f"/addresses/{address}/transactions"
     )
 
-    response.raise_for_status()
+    return transactions[:ETHEREUM_MAX_TXS]
 
-    data = response.json()
-
-    return data.get("items", [])
 
 # =========================================================
 # ETHEREUM TOKEN TRANSFERS
 # =========================================================
 
-async def get_ethereum_token_transfers(client, address):
+async def get_ethereum_token_transfers(
+    client,
+    address
+):
+
+    transfers = await blockscout_paginated_request(
+        client,
+        f"/addresses/{address}/token-transfers"
+    )
+
+    return transfers[
+        :ETHEREUM_MAX_TOKEN_TRANSFERS
+    ]
+
+
+# =========================================================
+# ETHEREUM ADDRESS DETAILS
+# =========================================================
+
+async def get_ethereum_address_details(
+    client,
+    address
+):
+
     response = await client.get(
-        f"{ETHEREUM_API}/addresses/{address}/token-transfers",
-        params={
-            "items_count": ETHEREUM_MAX_TOKEN_TRANSFERS
-        }
+        f"{ETHEREUM_API}/addresses/{address}"
     )
 
     response.raise_for_status()
 
-    data = response.json()
+    return response.json()
 
-    return data.get("items", [])
 
 # =========================================================
 # ETHEREUM FUND FLOW
 # =========================================================
 
-async def ethereum_fundflow(client, root_address, hops):
+async def ethereum_fundflow(
+    client,
+    root_address,
+    hops
+):
 
     nodes = {}
-    edges = []
 
-    # -----------------------------------------------------
-    # ROOT WALLET
-    # -----------------------------------------------------
+    edges = []
 
     nodes[root_address] = {
         "id": root_address,
@@ -210,33 +273,57 @@ async def ethereum_fundflow(client, root_address, hops):
         "type": "wallet"
     }
 
-    # -----------------------------------------------------
-    # INVESTIGATION QUEUE
-    # -----------------------------------------------------
+    queue = [
+        (
+            root_address,
+            0
+        )
+    ]
 
-    queue = [(root_address, 0)]
-    visited = {root_address}
+    visited = {
+        root_address.lower()
+    }
 
-    # Track how many wallets are allowed at each hop
     wallets_per_hop = {
         0: 1
     }
 
-    # -----------------------------------------------------
-    # FUND FLOW INVESTIGATION
-    # -----------------------------------------------------
+    # =====================================================
+    # ROOT ADDRESS DETAILS
+    # =====================================================
+
+    address_details = None
+
+    try:
+
+        address_details = (
+            await get_ethereum_address_details(
+                client,
+                root_address
+            )
+        )
+
+    except Exception as e:
+
+        address_details = {
+            "error": str(e)
+        }
+
+    # =====================================================
+    # FUND FLOW
+    # =====================================================
 
     while queue:
 
         current_address, current_hop = queue.pop(0)
 
-        # Stop when requested hop depth is reached
         if current_hop >= hops:
             continue
 
         next_hop = current_hop + 1
 
         if next_hop not in wallets_per_hop:
+
             wallets_per_hop[next_hop] = 0
 
         # =================================================
@@ -245,16 +332,17 @@ async def ethereum_fundflow(client, root_address, hops):
 
         try:
 
-            transactions = await get_ethereum_transactions(
-                client,
-                current_address
+            transactions = (
+                await get_ethereum_transactions(
+                    client,
+                    current_address
+                )
             )
 
         except Exception:
 
             transactions = []
 
-        # Maximum transactions per wallet
         transactions = transactions[
             :MAX_TXS_PER_WALLET
         ]
@@ -262,6 +350,7 @@ async def ethereum_fundflow(client, root_address, hops):
         for tx in transactions:
 
             from_data = tx.get("from") or {}
+
             to_data = tx.get("to") or {}
 
             from_address = (
@@ -285,60 +374,68 @@ async def ethereum_fundflow(client, root_address, hops):
                 or "unknown"
             )
 
-            # -------------------------------------------------
-            # ETH VALUE
-            # -------------------------------------------------
-
-            raw_value = tx.get("value", "0")
+            raw_value = tx.get(
+                "value",
+                "0"
+            )
 
             try:
-                value_wei = int(raw_value)
-            except (TypeError, ValueError):
+
+                value_wei = int(
+                    raw_value
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
                 value_wei = 0
 
-            value_eth = value_wei / 10**18
+            value_eth = (
+                value_wei / 10**18
+            )
 
-            # -------------------------------------------------
-            # DIRECTION
-            # -------------------------------------------------
-
-            if from_address.lower() == current_address.lower():
+            if (
+                from_address.lower()
+                == current_address.lower()
+            ):
 
                 counterparty = to_address
+
                 direction = "OUTGOING"
 
             else:
 
                 counterparty = from_address
+
                 direction = "INCOMING"
 
-            # -------------------------------------------------
-            # ADD COUNTERPARTY NODE
-            # -------------------------------------------------
+            # =============================================
+            # COUNTERPARTY NODE
+            # =============================================
 
             if counterparty not in nodes:
 
-                # Only add new wallets if hop limit allows it
-                if wallets_per_hop[next_hop] < MAX_WALLETS_PER_HOP:
-
-                    nodes[counterparty] = {
-                        "id": counterparty,
-                        "address": counterparty,
-                        "network": "Ethereum",
-                        "hop": next_hop,
-                        "type": "wallet"
-                    }
-
-                    wallets_per_hop[next_hop] += 1
-
-                else:
-                    # Wallet limit reached.
-                    # Do not expand this counterparty.
+                if (
+                    wallets_per_hop[next_hop]
+                    >= MAX_WALLETS_PER_HOP
+                ):
                     continue
 
-            # -------------------------------------------------
-            # ADD ETH EDGE
-            # -------------------------------------------------
+                nodes[counterparty] = {
+                    "id": counterparty,
+                    "address": counterparty,
+                    "network": "Ethereum",
+                    "hop": next_hop,
+                    "type": "wallet"
+                }
+
+                wallets_per_hop[next_hop] += 1
+
+            # =============================================
+            # ETH EDGE
+            # =============================================
 
             edges.append({
 
@@ -374,21 +471,24 @@ async def ethereum_fundflow(client, root_address, hops):
 
             })
 
-            # -------------------------------------------------
-            # QUEUE NEXT WALLET
-            # -------------------------------------------------
+            # =============================================
+            # NEXT WALLET
+            # =============================================
 
             if (
 
                 counterparty in nodes
 
-                and counterparty not in visited
+                and counterparty.lower()
+                not in visited
 
                 and next_hop < hops
 
             ):
 
-                visited.add(counterparty)
+                visited.add(
+                    counterparty.lower()
+                )
 
                 queue.append(
                     (
@@ -403,24 +503,32 @@ async def ethereum_fundflow(client, root_address, hops):
 
         try:
 
-            token_transfers = await get_ethereum_token_transfers(
-                client,
-                current_address
+            token_transfers = (
+                await get_ethereum_token_transfers(
+                    client,
+                    current_address
+                )
             )
 
         except Exception:
 
             token_transfers = []
 
-        # Maximum token transfers per wallet
         token_transfers = token_transfers[
             :ETHEREUM_MAX_TOKEN_TRANSFERS
         ]
 
         for transfer in token_transfers:
 
-            from_data = transfer.get("from") or {}
-            to_data = transfer.get("to") or {}
+            from_data = (
+                transfer.get("from")
+                or {}
+            )
+
+            to_data = (
+                transfer.get("to")
+                or {}
+            )
 
             from_address = (
                 from_data.get("hash")
@@ -438,58 +546,101 @@ async def ethereum_fundflow(client, root_address, hops):
                 continue
 
             tx_hash = (
-                transfer.get("transaction_hash")
-                or transfer.get("tx_hash")
-                or transfer.get("hash")
+                transfer.get(
+                    "transaction_hash"
+                )
+                or transfer.get(
+                    "tx_hash"
+                )
+                or transfer.get(
+                    "hash"
+                )
                 or "unknown"
             )
 
-            # -------------------------------------------------
+            # =============================================
             # TOKEN INFORMATION
-            # -------------------------------------------------
+            # =============================================
 
-            token_data = transfer.get("token") or {}
-
-            if not isinstance(token_data, dict):
-                token_data = {}
-
-            token_name = token_data.get("name")
-            token_symbol = token_data.get("symbol")
-
-            token_address = (
-                token_data.get("address")
-                or token_data.get("hash")
+            token_data = (
+                transfer.get("token")
+                or {}
             )
 
-            # -------------------------------------------------
+            if not isinstance(
+                token_data,
+                dict
+            ):
+
+                token_data = {}
+
+            token_name = token_data.get(
+                "name"
+            )
+
+            token_symbol = token_data.get(
+                "symbol"
+            )
+
+            token_address = (
+                token_data.get(
+                    "address"
+                )
+                or token_data.get(
+                    "hash"
+                )
+            )
+
+            # =============================================
             # TOKEN VALUE
-            # -------------------------------------------------
+            # =============================================
 
-            total_data = transfer.get("total") or {}
+            total_data = (
+                transfer.get("total")
+                or {}
+            )
 
-            if isinstance(total_data, dict):
+            if isinstance(
+                total_data,
+                dict
+            ):
 
                 raw_token_value = (
-                    total_data.get("value")
-                    or total_data.get("amount")
+                    total_data.get(
+                        "value"
+                    )
+                    or total_data.get(
+                        "amount"
+                    )
                     or "0"
                 )
 
             else:
 
-                raw_token_value = str(total_data)
+                raw_token_value = str(
+                    total_data
+                )
 
             decimals = (
-                token_data.get("decimals")
-                or transfer.get("decimals")
+                token_data.get(
+                    "decimals"
+                )
+                or transfer.get(
+                    "decimals"
+                )
                 or 0
             )
 
             try:
 
-                decimals = int(decimals)
+                decimals = int(
+                    decimals
+                )
 
-            except (TypeError, ValueError):
+            except (
+                TypeError,
+                ValueError
+            ):
 
                 decimals = 0
 
@@ -497,7 +648,9 @@ async def ethereum_fundflow(client, root_address, hops):
 
                 token_value = (
                     int(raw_token_value)
-                    / (10 ** decimals)
+                    / (
+                        10 ** decimals
+                    )
                 )
 
             except (
@@ -508,45 +661,50 @@ async def ethereum_fundflow(client, root_address, hops):
 
                 token_value = 0
 
-            # -------------------------------------------------
+            # =============================================
             # DIRECTION
-            # -------------------------------------------------
+            # =============================================
 
-            if from_address.lower() == current_address.lower():
+            if (
+                from_address.lower()
+                == current_address.lower()
+            ):
 
                 counterparty = to_address
+
                 direction = "OUTGOING"
 
             else:
 
                 counterparty = from_address
+
                 direction = "INCOMING"
 
-            # -------------------------------------------------
-            # ADD TOKEN COUNTERPARTY
-            # -------------------------------------------------
+            # =============================================
+            # TOKEN COUNTERPARTY
+            # =============================================
 
             if counterparty not in nodes:
 
-                if wallets_per_hop[next_hop] < MAX_WALLETS_PER_HOP:
-
-                    nodes[counterparty] = {
-                        "id": counterparty,
-                        "address": counterparty,
-                        "network": "Ethereum",
-                        "hop": next_hop,
-                        "type": "wallet"
-                    }
-
-                    wallets_per_hop[next_hop] += 1
-
-                else:
-
+                if (
+                    wallets_per_hop[next_hop]
+                    >= MAX_WALLETS_PER_HOP
+                ):
                     continue
 
-            # -------------------------------------------------
-            # ADD TOKEN EDGE
-            # -------------------------------------------------
+                nodes[counterparty] = {
+                    "id": counterparty,
+                    "address": counterparty,
+                    "network": "Ethereum",
+                    "hop": next_hop,
+                    "type": "wallet"
+                }
+
+                wallets_per_hop[next_hop] += 1
+
+            # =============================================
+            # TOKEN EDGE
+            # =============================================
 
             edges.append({
 
@@ -578,7 +736,9 @@ async def ethereum_fundflow(client, root_address, hops):
                     token_value,
 
                 "value_raw":
-                    str(raw_token_value),
+                    str(
+                        raw_token_value
+                    ),
 
                 "decimals":
                     decimals,
@@ -594,21 +754,24 @@ async def ethereum_fundflow(client, root_address, hops):
 
             })
 
-            # -------------------------------------------------
-            # QUEUE NEXT WALLET
-            # -------------------------------------------------
+            # =============================================
+            # NEXT WALLET
+            # =============================================
 
             if (
 
                 counterparty in nodes
 
-                and counterparty not in visited
+                and counterparty.lower()
+                not in visited
 
                 and next_hop < hops
 
             ):
 
-                visited.add(counterparty)
+                visited.add(
+                    counterparty.lower()
+                )
 
                 queue.append(
                     (
@@ -617,20 +780,26 @@ async def ethereum_fundflow(client, root_address, hops):
                     )
                 )
 
-    # =========================================================
+    # =====================================================
     # REMOVE DUPLICATE EDGES
-    # =========================================================
+    # =====================================================
 
     unique_edges = {}
 
     for edge in edges:
 
         key = (
+
             edge.get("source"),
+
             edge.get("target"),
+
             edge.get("transaction_hash"),
+
             edge.get("type"),
+
             edge.get("value_raw")
+
         )
 
         unique_edges[key] = edge
@@ -639,29 +808,39 @@ async def ethereum_fundflow(client, root_address, hops):
         unique_edges.values()
     )
 
-    # =========================================================
-    # CALCULATE UNIQUE TRANSACTIONS
-    # =========================================================
+    # =====================================================
+    # UNIQUE TRANSACTIONS
+    # =====================================================
 
     unique_transaction_hashes = {
 
-        edge.get("transaction_hash")
+        edge.get(
+            "transaction_hash"
+        )
 
         for edge in final_edges
 
-        if edge.get("transaction_hash")
-        and edge.get("transaction_hash") != "unknown"
+        if edge.get(
+            "transaction_hash"
+        )
+        and edge.get(
+            "transaction_hash"
+        ) != "unknown"
 
     }
 
-    # =========================================================
-    # CALCULATE ACTUAL HOPS
-    # =========================================================
+    # =====================================================
+    # HOPS
+    # =====================================================
 
     hops_traced = max(
 
         [
-            node.get("hop", 0)
+            node.get(
+                "hop",
+                0
+            )
+
             for node in nodes.values()
         ],
 
@@ -674,29 +853,37 @@ async def ethereum_fundflow(client, root_address, hops):
         hops_traced
     )
 
-    # =========================================================
-    # COUNT TRANSFER TYPES
-    # =========================================================
+    # =====================================================
+    # TRANSFER TYPES
+    # =====================================================
 
     native_edges = [
 
         edge
+
         for edge in final_edges
-        if edge.get("type") == "native"
+
+        if edge.get(
+            "type"
+        ) == "native"
 
     ]
 
     token_edges = [
 
         edge
+
         for edge in final_edges
-        if edge.get("type") == "token"
+
+        if edge.get(
+            "type"
+        ) == "token"
 
     ]
 
-    # =========================================================
+    # =====================================================
     # FINAL RESPONSE
-    # =========================================================
+    # =====================================================
 
     return {
 
@@ -708,6 +895,9 @@ async def ethereum_fundflow(client, root_address, hops):
 
         "root_wallet":
             root_address,
+
+        "address_details":
+            address_details,
 
         "hops_requested":
             hops,
@@ -731,7 +921,9 @@ async def ethereum_fundflow(client, root_address, hops):
             len(token_edges),
 
         "nodes":
-            list(nodes.values()),
+            list(
+                nodes.values()
+            ),
 
         "edges_data":
             final_edges,
@@ -748,7 +940,13 @@ async def ethereum_fundflow(client, root_address, hops):
                 MAX_TXS_PER_WALLET,
 
             "max_token_transfers_per_wallet":
-                ETHEREUM_MAX_TOKEN_TRANSFERS
+                ETHEREUM_MAX_TOKEN_TRANSFERS,
+
+            "ethereum_page_size":
+                ETHEREUM_PAGE_SIZE,
+
+            "ethereum_max_pages":
+                ETHEREUM_MAX_PAGES
 
         },
 
@@ -769,13 +967,16 @@ async def fundflow(
     hops: int = 2
 ):
 
+    network = network.lower()
+
     # =====================================================
     # NETWORK VALIDATION
     # =====================================================
 
-    network = network.lower()
-
-    if network not in ("bitcoin", "ethereum"):
+    if network not in (
+        "bitcoin",
+        "ethereum"
+    ):
 
         raise HTTPException(
             status_code=400,
@@ -786,12 +987,14 @@ async def fundflow(
         )
 
     # =====================================================
-    # ETHEREUM FUND FLOW
+    # ETHEREUM
     # =====================================================
 
     if network == "ethereum":
 
-        if not is_ethereum_address(address):
+        if not is_ethereum_address(
+            address
+        ):
 
             raise HTTPException(
                 status_code=400,
@@ -800,7 +1003,10 @@ async def fundflow(
 
         hops = max(
             1,
-            min(hops, MAX_HOPS)
+            min(
+                hops,
+                MAX_HOPS
+            )
         )
 
         try:
@@ -823,13 +1029,13 @@ async def fundflow(
             raise HTTPException(
                 status_code=502,
                 detail=(
-                    f"Ethereum fund flow lookup failed: {str(e)}"
+                    "Ethereum fund flow lookup failed: "
+                    f"{str(e)}"
                 )
             )
 
-
     # =====================================================
-    # ADDRESS VALIDATION
+    # BITCOIN ADDRESS VALIDATION
     # =====================================================
 
     if address.lower().startswith("0x"):
@@ -842,7 +1048,6 @@ async def fundflow(
             )
         )
 
-
     if len(address) < 26 or len(address) > 62:
 
         raise HTTPException(
@@ -850,16 +1055,17 @@ async def fundflow(
             detail="Invalid Bitcoin address format."
         )
 
-
     # =====================================================
-    # CONTROL HOPS
+    # BITCOIN HOPS
     # =====================================================
 
     hops = max(
         1,
-        min(hops, MAX_HOPS)
+        min(
+            hops,
+            MAX_HOPS
+        )
     )
-
 
     try:
 
@@ -867,44 +1073,23 @@ async def fundflow(
             timeout=30
         ) as client:
 
-            # =================================================
-            # GRAPH STORAGE
-            # =================================================
-
             nodes = {}
+
             edges = []
-
-
-            # =================================================
-            # ROOT WALLET
-            # =================================================
 
             nodes[address] = {
                 "id": address,
                 "type": "wallet",
-                "label": address[:12] + "...",
+                "label":
+                    address[:12] + "...",
                 "hop": 0
             }
 
-
-            # =================================================
-            # IMPORTANT:
-            #
-            # processed_wallets means:
-            # wallet has already been investigated.
-            #
-            # A discovered wallet is NOT marked processed
-            # until that wallet is actually analysed.
-            # =================================================
-
             processed_wallets = set()
 
-            current_wallets = [address]
-
-
-            # =================================================
-            # STATISTICS
-            # =================================================
+            current_wallets = [
+                address
+            ]
 
             total_transactions = 0
 
@@ -914,9 +1099,8 @@ async def fundflow(
 
             rate_limited = False
 
-
             # =================================================
-            # HOP ANALYSIS
+            # BITCOIN HOP ANALYSIS
             # =================================================
 
             for current_hop in range(
@@ -924,53 +1108,25 @@ async def fundflow(
                 hops + 1
             ):
 
-                # -------------------------------------------------
-                # Wallets to analyse in the NEXT hop
-                # -------------------------------------------------
-
                 next_wallets = []
-
-
-                # =================================================
-                # PROCESS CURRENT HOP WALLETS
-                # =================================================
 
                 for wallet_address in current_wallets:
 
-                    # -------------------------------------------------
-                    # DO NOT PROCESS SAME WALLET TWICE
-                    # -------------------------------------------------
-
-                    if wallet_address in processed_wallets:
+                    if (
+                        wallet_address
+                        in processed_wallets
+                    ):
                         continue
-
-
-                    # -------------------------------------------------
-                    # MARK AS PROCESSED
-                    #
-                    # This is intentionally done here,
-                    # NOT when the wallet is discovered.
-                    # -------------------------------------------------
 
                     processed_wallets.add(
                         wallet_address
                     )
-
-
-                    # =================================================
-                    # REQUEST DELAY
-                    # =================================================
 
                     if requests_made > 0:
 
                         await asyncio.sleep(
                             REQUEST_DELAY
                         )
-
-
-                    # =================================================
-                    # GET WALLET DATA
-                    # =================================================
 
                     (
                         wallet_data,
@@ -981,21 +1137,11 @@ async def fundflow(
                         wallet_address
                     )
 
-
-                    # -------------------------------------------------
-                    # RATE LIMIT
-                    # -------------------------------------------------
-
                     if limited:
 
                         rate_limited = True
 
                         break
-
-
-                    # -------------------------------------------------
-                    # REQUEST STATISTICS
-                    # -------------------------------------------------
 
                     if from_cache:
 
@@ -1005,48 +1151,34 @@ async def fundflow(
 
                         requests_made += 1
 
-
-                    # -------------------------------------------------
-                    # WALLET NOT FOUND
-                    # -------------------------------------------------
-
                     if not wallet_data:
                         continue
 
-
-                    # =================================================
-                    # TRANSACTIONS
-                    # =================================================
-
-                    transactions = wallet_data.get(
-                        "txs",
-                        []
-                    )[:MAX_TXS_PER_WALLET]
-
+                    transactions = (
+                        wallet_data.get(
+                            "txs",
+                            []
+                        )
+                    )[
+                        :MAX_TXS_PER_WALLET
+                    ]
 
                     total_transactions += len(
                         transactions
                     )
 
-
-                    # =================================================
-                    # TRANSACTION ANALYSIS
-                    # =================================================
-
                     for tx in transactions:
 
-                        txid = tx.get("hash")
-
+                        txid = tx.get(
+                            "hash"
+                        )
 
                         if not txid:
                             continue
 
-
-                        # =================================================
+                        # =================================
                         # INPUTS
-                        #
-                        # source wallet -> current wallet
-                        # =================================================
+                        # =================================
 
                         for vin in tx.get(
                             "inputs",
@@ -1054,27 +1186,26 @@ async def fundflow(
                         ):
 
                             prev_out = (
-                                vin.get("prev_out")
+                                vin.get(
+                                    "prev_out"
+                                )
                                 or {}
                             )
 
-
                             source_address = (
-                                prev_out.get("addr")
+                                prev_out.get(
+                                    "addr"
+                                )
                             )
-
 
                             if not source_address:
                                 continue
 
-
-                            if source_address == wallet_address:
+                            if (
+                                source_address
+                                == wallet_address
+                            ):
                                 continue
-
-
-                            # -------------------------------------------------
-                            # VALUE
-                            # -------------------------------------------------
 
                             try:
 
@@ -1092,44 +1223,21 @@ async def fundflow(
 
                                 value_sats = 0
 
-
-                            # =================================================
-                            # SOURCE NODE
-                            # =================================================
-
                             if source_address not in nodes:
 
                                 nodes[source_address] = {
-                                    "id": source_address,
-                                    "type": "wallet",
-                                    "label": (
-                                        source_address[:12]
-                                        + "..."
-                                    ),
-                                    "hop": current_hop
+                                    "id":
+                                        source_address,
+                                    "type":
+                                        "wallet",
+                                    "label":
+                                        (
+                                            source_address[:12]
+                                            + "..."
+                                        ),
+                                    "hop":
+                                        current_hop
                                 }
-
-                            else:
-
-                                # Keep the earliest discovered hop
-
-                                existing_hop = nodes[
-                                    source_address
-                                ].get(
-                                    "hop",
-                                    current_hop
-                                )
-
-                                if current_hop < existing_hop:
-
-                                    nodes[
-                                        source_address
-                                    ]["hop"] = current_hop
-
-
-                            # =================================================
-                            # INCOMING EDGE
-                            # =================================================
 
                             edges.append({
 
@@ -1153,11 +1261,6 @@ async def fundflow(
 
                             })
 
-
-                            # =================================================
-                            # QUEUE SOURCE FOR NEXT HOP
-                            # =================================================
-
                             if (
 
                                 source_address
@@ -1175,12 +1278,9 @@ async def fundflow(
                                     source_address
                                 )
 
-
-                        # =================================================
+                        # =================================
                         # OUTPUTS
-                        #
-                        # current wallet -> destination wallet
-                        # =================================================
+                        # =================================
 
                         for vout in tx.get(
                             "out",
@@ -1188,21 +1288,19 @@ async def fundflow(
                         ):
 
                             destination_address = (
-                                vout.get("addr")
+                                vout.get(
+                                    "addr"
+                                )
                             )
-
 
                             if not destination_address:
                                 continue
 
-
-                            if destination_address == wallet_address:
+                            if (
+                                destination_address
+                                == wallet_address
+                            ):
                                 continue
-
-
-                            # -------------------------------------------------
-                            # VALUE
-                            # -------------------------------------------------
 
                             try:
 
@@ -1220,51 +1318,21 @@ async def fundflow(
 
                                 value_sats = 0
 
-
-                            # =================================================
-                            # DESTINATION NODE
-                            # =================================================
-
                             if destination_address not in nodes:
 
                                 nodes[destination_address] = {
                                     "id":
                                         destination_address,
-
                                     "type":
                                         "wallet",
-
                                     "label":
                                         (
                                             destination_address[:12]
                                             + "..."
                                         ),
-
                                     "hop":
                                         current_hop
                                 }
-
-                            else:
-
-                                # Keep earliest hop
-
-                                existing_hop = nodes[
-                                    destination_address
-                                ].get(
-                                    "hop",
-                                    current_hop
-                                )
-
-                                if current_hop < existing_hop:
-
-                                    nodes[
-                                        destination_address
-                                    ]["hop"] = current_hop
-
-
-                            # =================================================
-                            # OUTGOING EDGE
-                            # =================================================
 
                             edges.append({
 
@@ -1288,11 +1356,6 @@ async def fundflow(
 
                             })
 
-
-                            # =================================================
-                            # QUEUE DESTINATION FOR NEXT HOP
-                            # =================================================
-
                             if (
 
                                 destination_address
@@ -1310,43 +1373,19 @@ async def fundflow(
                                     destination_address
                                 )
 
-
-                # =================================================
-                # STOP IF RATE LIMITED
-                # =================================================
-
                 if rate_limited:
                     break
 
-
-                # =================================================
-                # PREPARE NEXT HOP
-                #
-                # IMPORTANT:
-                #
-                # DO NOT add next_wallets to a visited set here.
-                #
-                # They must remain available for actual analysis
-                # in the next iteration.
-                # =================================================
-
                 current_wallets = next_wallets
-
-
-                # =================================================
-                # NO MORE WALLETS
-                # =================================================
 
                 if not current_wallets:
                     break
 
-
-            # =========================================================
-            # REMOVE DUPLICATE EDGES
-            # =========================================================
+            # =================================================
+            # BITCOIN DUPLICATES
+            # =================================================
 
             unique_edges = {}
-
 
             for edge in edges:
 
@@ -1364,37 +1403,27 @@ async def fundflow(
 
                 )
 
-
                 unique_edges[key] = edge
-
 
             final_edges = list(
                 unique_edges.values()
             )
 
-
-            # =========================================================
-            # CALCULATE HOPS TRACED
-            # =========================================================
-
             hops_traced = max(
                 [
-                    node.get("hop", 0)
+                    node.get(
+                        "hop",
+                        0
+                    )
                     for node in nodes.values()
                 ],
                 default=0
             )
 
-
             hops_traced = min(
                 hops,
                 hops_traced
             )
-
-
-            # =========================================================
-            # STATUS
-            # =========================================================
 
             if rate_limited:
 
@@ -1412,11 +1441,6 @@ async def fundflow(
                 message = (
                     "Live Bitcoin fund-flow analysis completed."
                 )
-
-
-            # =========================================================
-            # FINAL RESPONSE
-            # =========================================================
 
             return {
 
@@ -1491,27 +1515,13 @@ async def fundflow(
 
             }
 
-
-    # =============================================================
-    # HTTP EXCEPTION
-    # =============================================================
-
     except HTTPException:
         raise
-
-
-    # =============================================================
-    # OTHER ERRORS
-    # =============================================================
 
     except Exception as e:
 
         raise HTTPException(
-
             status_code=502,
-
-            detail=(
-                f"Fund flow lookup failed: {str(e)}"
-            )
-
-        )
+            detail=(f"Fund flow lookup failed: {str(e)}"
+    )
+)

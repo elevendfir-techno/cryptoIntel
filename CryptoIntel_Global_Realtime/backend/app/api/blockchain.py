@@ -12,8 +12,9 @@ BITCOIN_API = "https://blockchain.info"
 MEMPOOL_API = "https://mempool.space/api"
 ETHEREUM_RPC = "https://ethereum-rpc.publicnode.com"
 
+
 # =========================================================
-# CACHE
+# BITCOIN CACHE
 # =========================================================
 
 BLOCK_CACHE = {
@@ -44,7 +45,8 @@ async def networks():
         },
         {
             "name": "Ethereum",
-            "status": "READY"
+            "status": "LIVE",
+            "provider": "PublicNode Ethereum JSON-RPC"
         },
         {
             "name": "Solana",
@@ -62,7 +64,7 @@ async def networks():
 
 
 # =========================================================
-# FETCH BLOCK DATA
+# FETCH BITCOIN BLOCK DATA
 # =========================================================
 
 async def fetch_block(client, height):
@@ -81,7 +83,10 @@ async def fetch_block(client, height):
 
         data = response.json()
 
-        blocks = data.get("blocks", [])
+        blocks = data.get(
+            "blocks",
+            []
+        )
 
         if not blocks:
             return None
@@ -93,10 +98,25 @@ async def fetch_block(client, height):
             "height": block.get("height"),
             "time": block.get("time"),
             "block_index": block.get("block_index"),
-            "txIndexes": block.get("txIndexes", []),
-            "n_tx": block.get("n_tx", 0),
-            "size": block.get("size", 0),
-            "prev_block": block.get("prev_block"),
+            "txIndexes": block.get(
+                "txIndexes",
+                []
+            ),
+            "n_tx": block.get(
+                "n_tx",
+                0
+            ),
+            "size": block.get(
+                "size",
+                0
+            ),
+            "weight": block.get(
+                "weight",
+                0
+            ),
+            "prev_block": block.get(
+                "prev_block"
+            ),
             "main_chain": block.get(
                 "main_chain",
                 True
@@ -104,12 +124,11 @@ async def fetch_block(client, height):
         }
 
     except Exception:
-
         return None
 
 
 # =========================================================
-# FETCH LATEST 10 BLOCKS
+# FETCH LATEST BITCOIN BLOCKS
 # =========================================================
 
 async def refresh_blocks():
@@ -123,10 +142,6 @@ async def refresh_blocks():
             }
         ) as client:
 
-            # -------------------------------------------------
-            # Get latest 10 Bitcoin blocks
-            # -------------------------------------------------
-
             response = await client.get(
                 f"{MEMPOOL_API}/blocks"
             )
@@ -138,47 +153,49 @@ async def refresh_blocks():
             if not data:
                 return
 
-            # -------------------------------------------------
-            # Build block records
-            # -------------------------------------------------
-
             blocks = []
 
             for block in data[:10]:
 
                 blocks.append({
                     "hash": block.get("id"),
-                    "height": block.get("height"),
-                    "time": block.get("timestamp"),
-                    "block_index": block.get("height"),
+
+                    "height":
+                        block.get("height"),
+
+                    "time":
+                        block.get("timestamp"),
+
+                    "block_index":
+                        block.get("height"),
 
                     "txIndexes": [],
 
-                    "n_tx": block.get(
-                        "tx_count",
-                        0
-                    ),
+                    "n_tx":
+                        block.get(
+                            "tx_count",
+                            0
+                        ),
 
-                    "size": block.get(
-                        "size",
-                        0
-                    ),
+                    "size":
+                        block.get(
+                            "size",
+                            0
+                        ),
 
-                    "weight": block.get(
-                        "weight",
-                        0
-                    ),
+                    "weight":
+                        block.get(
+                            "weight",
+                            0
+                        ),
 
-                    "prev_block": block.get(
-                        "previousblockhash"
-                    ),
+                    "prev_block":
+                        block.get(
+                            "previousblockhash"
+                        ),
 
                     "main_chain": True
                 })
-
-            # -------------------------------------------------
-            # Sort newest first
-            # -------------------------------------------------
 
             blocks.sort(
                 key=lambda x: x.get(
@@ -191,29 +208,37 @@ async def refresh_blocks():
             if not blocks:
                 return
 
-            latest_height = blocks[0]["height"]
+            latest_height = blocks[0][
+                "height"
+            ]
 
-            # -------------------------------------------------
-            # Update cache
-            # -------------------------------------------------
+            BLOCK_CACHE[
+                "network"
+            ] = "Bitcoin"
 
-            BLOCK_CACHE["network"] = "Bitcoin"
+            BLOCK_CACHE[
+                "status"
+            ] = "LIVE"
 
-            BLOCK_CACHE["status"] = "LIVE"
+            BLOCK_CACHE[
+                "latest_height"
+            ] = latest_height
 
-            BLOCK_CACHE["latest_height"] = latest_height
+            BLOCK_CACHE[
+                "blocks"
+            ] = blocks[:10]
 
-            BLOCK_CACHE["blocks"] = blocks[:10]
+            BLOCK_CACHE[
+                "count"
+            ] = len(blocks[:10])
 
-            BLOCK_CACHE["count"] = len(
-                blocks[:10]
-            )
+            BLOCK_CACHE[
+                "source"
+            ] = "Mempool.space Bitcoin API"
 
-            BLOCK_CACHE["source"] = (
-                "Mempool.space Bitcoin API"
-            )
-
-            BLOCK_CACHE["updated_at"] = time.time()
+            BLOCK_CACHE[
+                "updated_at"
+            ] = time.time()
 
             print(
                 f"Bitcoin blocks updated: "
@@ -223,11 +248,13 @@ async def refresh_blocks():
     except Exception as e:
 
         print(
-            f"Bitcoin block refresh error: {e}"
+            f"Bitcoin block refresh error: "
+            f"{e}"
         )
 
+
 # =========================================================
-# BACKGROUND BLOCK REFRESH
+# BITCOIN BACKGROUND BLOCK REFRESH
 # =========================================================
 
 async def block_refresh_loop():
@@ -246,18 +273,15 @@ async def block_refresh_loop():
         except Exception as e:
 
             print(
-                f"Blockchain background error: {e}"
+                f"Blockchain background error: "
+                f"{e}"
             )
-
-        # -------------------------------------------------
-        # Refresh every 60 seconds
-        # -------------------------------------------------
 
         await asyncio.sleep(60)
 
 
 # =========================================================
-# START BACKGROUND COLLECTOR
+# START BITCOIN BACKGROUND COLLECTOR
 # =========================================================
 
 def start_blockchain_collector():
@@ -274,29 +298,29 @@ def start_blockchain_collector():
 @router.get("/bitcoin/blocks")
 async def bitcoin_blocks():
 
-    # -----------------------------------------------------
-    # If cache already exists, return immediately
-    # -----------------------------------------------------
-
     if BLOCK_CACHE["blocks"]:
 
         return {
-            "network": BLOCK_CACHE["network"],
-            "status": BLOCK_CACHE["status"],
+            "network":
+                BLOCK_CACHE["network"],
+
+            "status":
+                BLOCK_CACHE["status"],
+
             "latest_height":
                 BLOCK_CACHE["latest_height"],
+
             "blocks":
                 BLOCK_CACHE["blocks"],
+
             "count":
                 BLOCK_CACHE["count"],
+
             "source":
                 BLOCK_CACHE["source"],
+
             "cached": True
         }
-
-    # -----------------------------------------------------
-    # First request
-    # -----------------------------------------------------
 
     await refresh_blocks()
 
@@ -311,16 +335,24 @@ async def bitcoin_blocks():
         )
 
     return {
-        "network": BLOCK_CACHE["network"],
-        "status": BLOCK_CACHE["status"],
+        "network":
+            BLOCK_CACHE["network"],
+
+        "status":
+            BLOCK_CACHE["status"],
+
         "latest_height":
             BLOCK_CACHE["latest_height"],
+
         "blocks":
             BLOCK_CACHE["blocks"],
+
         "count":
             BLOCK_CACHE["count"],
+
         "source":
             BLOCK_CACHE["source"],
+
         "cached": True
     }
 
@@ -330,7 +362,9 @@ async def bitcoin_blocks():
 # =========================================================
 
 @router.get("/bitcoin/block/{block_hash}")
-async def bitcoin_block_details(block_hash: str):
+async def bitcoin_block_details(
+    block_hash: str
+):
 
     try:
 
@@ -346,6 +380,7 @@ async def bitcoin_block_details(block_hash: str):
             )
 
         if response.status_code == 404:
+
             raise HTTPException(
                 status_code=404,
                 detail="Bitcoin block not found."
@@ -358,23 +393,58 @@ async def bitcoin_block_details(block_hash: str):
         return {
             "network": "Bitcoin",
             "status": "LIVE",
+
             "block": {
-                "hash": block.get("id"),
-                "height": block.get("height"),
-                "timestamp": block.get("timestamp"),
-                "tx_count": block.get("tx_count", 0),
-                "size": block.get("size", 0),
-                "weight": block.get("weight", 0),
-                "version": block.get("version"),
-                "merkle_root": block.get("merkle_root"),
-                "previous_block_hash": block.get(
-                    "previousblockhash"
-                ),
-                "nonce": block.get("nonce"),
-                "bits": block.get("bits"),
-                "difficulty": block.get("difficulty")
+                "hash":
+                    block.get("id"),
+
+                "height":
+                    block.get("height"),
+
+                "timestamp":
+                    block.get("timestamp"),
+
+                "tx_count":
+                    block.get(
+                        "tx_count",
+                        0
+                    ),
+
+                "size":
+                    block.get(
+                        "size",
+                        0
+                    ),
+
+                "weight":
+                    block.get(
+                        "weight",
+                        0
+                    ),
+
+                "version":
+                    block.get("version"),
+
+                "merkle_root":
+                    block.get("merkle_root"),
+
+                "previous_block_hash":
+                    block.get(
+                        "previousblockhash"
+                    ),
+
+                "nonce":
+                    block.get("nonce"),
+
+                "bits":
+                    block.get("bits"),
+
+                "difficulty":
+                    block.get("difficulty")
             },
-            "source": "Mempool.space Bitcoin API"
+
+            "source":
+                "Mempool.space Bitcoin API"
         }
 
     except HTTPException:
@@ -384,13 +454,21 @@ async def bitcoin_block_details(block_hash: str):
 
         raise HTTPException(
             status_code=502,
-            detail=f"Block lookup failed: {str(e)}"
+            detail=(
+                f"Block lookup failed: "
+                f"{str(e)}"
+            )
         )
+
+
+# =========================================================
 # BITCOIN TRANSACTION
 # =========================================================
 
 @router.get("/bitcoin/transaction/{txid}")
-async def bitcoin_transaction(txid: str):
+async def bitcoin_transaction(
+    txid: str
+):
 
     try:
 
@@ -429,7 +507,8 @@ async def bitcoin_transaction(txid: str):
         raise HTTPException(
             status_code=502,
             detail=(
-                f"Transaction lookup failed: {str(e)}"
+                f"Transaction lookup failed: "
+                f"{str(e)}"
             )
         )
 
@@ -439,7 +518,9 @@ async def bitcoin_transaction(txid: str):
 # =========================================================
 
 @router.get("/bitcoin/address/{address}")
-async def bitcoin_address(address: str):
+async def bitcoin_address(
+    address: str
+):
 
     if address.lower().startswith("0x"):
 
@@ -538,10 +619,13 @@ async def bitcoin_address(address: str):
         raise HTTPException(
             status_code=502,
             detail=(
-                f"Address lookup failed: {str(e)}"
+                f"Address lookup failed: "
+                f"{str(e)}"
             )
         )
-        # =========================================================
+
+
+# =========================================================
 # ETHEREUM LIVE BLOCKCHAIN
 # =========================================================
 
@@ -556,7 +640,15 @@ ETHEREUM_CACHE = {
 }
 
 
-async def ethereum_rpc(client, method, params):
+# =========================================================
+# ETHEREUM RPC
+# =========================================================
+
+async def ethereum_rpc(
+    client,
+    method,
+    params
+):
 
     response = await client.post(
         ETHEREUM_RPC,
@@ -584,6 +676,10 @@ async def ethereum_rpc(client, method, params):
     return data.get("result")
 
 
+# =========================================================
+# REFRESH ETHEREUM BLOCK CACHE
+# =========================================================
+
 async def refresh_ethereum_blocks():
 
     try:
@@ -594,10 +690,6 @@ async def refresh_ethereum_blocks():
                 "User-Agent": "CryptoIntel/1.0"
             }
         ) as client:
-
-            # -------------------------------------------------
-            # Get latest Ethereum block number
-            # -------------------------------------------------
 
             latest_hex = await ethereum_rpc(
                 client,
@@ -612,23 +704,17 @@ async def refresh_ethereum_blocks():
 
             blocks = []
 
-            # -------------------------------------------------
-            # Get latest 10 blocks
-            # -------------------------------------------------
-
             for height in range(
                 latest_height,
                 latest_height - 10,
                 -1
             ):
 
-                block_hex = hex(height)
-
                 block = await ethereum_rpc(
                     client,
                     "eth_getBlockByNumber",
                     [
-                        block_hex,
+                        hex(height),
                         False
                     ]
                 )
@@ -644,48 +730,51 @@ async def refresh_ethereum_blocks():
                     16
                 )
 
+                transactions = block.get(
+                    "transactions",
+                    []
+                )
+
                 blocks.append({
-                    "hash": block.get("hash"),
 
-                    "height": int(
-                        block.get(
-                            "number",
-                            "0x0"
+                    "hash":
+                        block.get("hash"),
+
+                    "height":
+                        int(
+                            block.get(
+                                "number",
+                                "0x0"
+                            ),
+                            16
                         ),
-                        16
-                    ),
 
-                    "time": timestamp,
+                    "time":
+                        timestamp,
 
-                    "block_index": int(
-                        block.get(
-                            "number",
-                            "0x0"
+                    "block_index":
+                        int(
+                            block.get(
+                                "number",
+                                "0x0"
+                            ),
+                            16
                         ),
-                        16
-                    ),
 
                     "txIndexes":
-                        block.get(
-                            "transactions",
-                            []
-                        ),
+                        transactions,
 
                     "n_tx":
-                        len(
-                            block.get(
-                                "transactions",
-                                []
-                            )
-                        ),
+                        len(transactions),
 
-                    "size": int(
-                        block.get(
-                            "size",
-                            "0x0"
+                    "size":
+                        int(
+                            block.get(
+                                "size",
+                                "0x0"
+                            ),
+                            16
                         ),
-                        16
-                    ),
 
                     "weight": 0,
 
@@ -696,21 +785,23 @@ async def refresh_ethereum_blocks():
 
                     "main_chain": True,
 
-                    "gas_used": int(
-                        block.get(
-                            "gasUsed",
-                            "0x0"
+                    "gas_used":
+                        int(
+                            block.get(
+                                "gasUsed",
+                                "0x0"
+                            ),
+                            16
                         ),
-                        16
-                    ),
 
-                    "gas_limit": int(
-                        block.get(
-                            "gasLimit",
-                            "0x0"
+                    "gas_limit":
+                        int(
+                            block.get(
+                                "gasLimit",
+                                "0x0"
+                            ),
+                            16
                         ),
-                        16
-                    ),
 
                     "base_fee_per_gas": (
                         int(
@@ -737,37 +828,33 @@ async def refresh_ethereum_blocks():
                 reverse=True
             )
 
-            # -------------------------------------------------
-            # Update Ethereum cache
-            # -------------------------------------------------
+            ETHEREUM_CACHE[
+                "network"
+            ] = "Ethereum"
 
-            ETHEREUM_CACHE["network"] = (
-                "Ethereum"
-            )
+            ETHEREUM_CACHE[
+                "status"
+            ] = "LIVE"
 
-            ETHEREUM_CACHE["status"] = (
-                "LIVE"
-            )
+            ETHEREUM_CACHE[
+                "latest_height"
+            ] = latest_height
 
-            ETHEREUM_CACHE["latest_height"] = (
-                latest_height
-            )
+            ETHEREUM_CACHE[
+                "blocks"
+            ] = blocks[:10]
 
-            ETHEREUM_CACHE["blocks"] = (
-                blocks[:10]
-            )
+            ETHEREUM_CACHE[
+                "count"
+            ] = len(blocks[:10])
 
-            ETHEREUM_CACHE["count"] = len(
-                blocks[:10]
-            )
+            ETHEREUM_CACHE[
+                "source"
+            ] = "PublicNode Ethereum JSON-RPC"
 
-            ETHEREUM_CACHE["source"] = (
-                "PublicNode Ethereum JSON-RPC"
-            )
-
-            ETHEREUM_CACHE["updated_at"] = (
-                time.time()
-            )
+            ETHEREUM_CACHE[
+                "updated_at"
+            ] = time.time()
 
             print(
                 f"Ethereum blocks updated: "
@@ -783,72 +870,7 @@ async def refresh_ethereum_blocks():
 
 
 # =========================================================
-# ETHEREUM LATEST BLOCKS API
-# =========================================================
-
-@router.get("/ethereum/blocks")
-async def ethereum_blocks():
-
-    if ETHEREUM_CACHE["blocks"]:
-
-        return {
-            "network":
-                ETHEREUM_CACHE["network"],
-
-            "status":
-                ETHEREUM_CACHE["status"],
-
-            "latest_height":
-                ETHEREUM_CACHE["latest_height"],
-
-            "blocks":
-                ETHEREUM_CACHE["blocks"],
-
-            "count":
-                ETHEREUM_CACHE["count"],
-
-            "source":
-                ETHEREUM_CACHE["source"],
-
-            "cached": True
-        }
-
-    await refresh_ethereum_blocks()
-
-    if not ETHEREUM_CACHE["blocks"]:
-
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "Ethereum blockchain data "
-                "temporarily unavailable."
-            )
-        )
-
-    return {
-        "network":
-            ETHEREUM_CACHE["network"],
-
-        "status":
-            ETHEREUM_CACHE["status"],
-
-        "latest_height":
-            ETHEREUM_CACHE["latest_height"],
-
-        "blocks":
-            ETHEREUM_CACHE["blocks"],
-
-        "count":
-            ETHEREUM_CACHE["count"],
-
-        "source":
-            ETHEREUM_CACHE["source"],
-
-        "cached": True
-    }
-
-# =========================================================
-# ETHEREUM LIVE BLOCKS
+# ETHEREUM LIVE BLOCKS API
 # =========================================================
 
 @router.get("/ethereum/blocks")
@@ -863,7 +885,6 @@ async def ethereum_blocks():
             }
         ) as client:
 
-            # Get latest Ethereum block number
             latest_block_hex = await ethereum_rpc(
                 client,
                 "eth_blockNumber",
@@ -877,20 +898,17 @@ async def ethereum_blocks():
 
             blocks = []
 
-            # Fetch latest 10 blocks
             for block_number in range(
                 latest_block,
                 latest_block - 10,
                 -1
             ):
 
-                block_hex = hex(block_number)
-
                 block = await ethereum_rpc(
                     client,
                     "eth_getBlockByNumber",
                     [
-                        block_hex,
+                        hex(block_number),
                         False
                     ]
                 )
@@ -898,55 +916,66 @@ async def ethereum_blocks():
                 if not block:
                     continue
 
+                transactions = block.get(
+                    "transactions",
+                    []
+                )
+
                 blocks.append({
-                    "hash": block.get("hash"),
 
-                    "height": int(
-                        block.get(
-                            "number",
-                            "0x0"
+                    "hash":
+                        block.get("hash"),
+
+                    "height":
+                        int(
+                            block.get(
+                                "number",
+                                "0x0"
+                            ),
+                            16
                         ),
-                        16
-                    ),
 
-                    "timestamp": int(
-                        block.get(
-                            "timestamp",
-                            "0x0"
+                    "timestamp":
+                        int(
+                            block.get(
+                                "timestamp",
+                                "0x0"
+                            ),
+                            16
                         ),
-                        16
-                    ),
 
-                    "tx_count": len(
-                        block.get(
-                            "transactions",
-                            []
-                        )
-                    ),
+                    "tx_count":
+                        len(transactions),
 
-                    "size": int(
-                        block.get(
-                            "size",
-                            "0x0"
+                    "transactions":
+                        transactions,
+
+                    "size":
+                        int(
+                            block.get(
+                                "size",
+                                "0x0"
+                            ),
+                            16
                         ),
-                        16
-                    ),
 
-                    "gas_used": int(
-                        block.get(
-                            "gasUsed",
-                            "0x0"
+                    "gas_used":
+                        int(
+                            block.get(
+                                "gasUsed",
+                                "0x0"
+                            ),
+                            16
                         ),
-                        16
-                    ),
 
-                    "gas_limit": int(
-                        block.get(
-                            "gasLimit",
-                            "0x0"
+                    "gas_limit":
+                        int(
+                            block.get(
+                                "gasLimit",
+                                "0x0"
+                            ),
+                            16
                         ),
-                        16
-                    ),
 
                     "base_fee_per_gas": (
                         int(
@@ -961,9 +990,10 @@ async def ethereum_blocks():
                         else None
                     ),
 
-                    "parent_hash": block.get(
-                        "parentHash"
-                    )
+                    "parent_hash":
+                        block.get(
+                            "parentHash"
+                        )
                 })
 
         return {
@@ -972,7 +1002,8 @@ async def ethereum_blocks():
             "latest_block": latest_block,
             "count": len(blocks),
             "blocks": blocks,
-            "source": "PublicNode Ethereum JSON-RPC"
+            "source":
+                "PublicNode Ethereum JSON-RPC"
         }
 
     except Exception as e:
@@ -984,6 +1015,12 @@ async def ethereum_blocks():
                 f"failed: {str(e)}"
             )
         )
+
+
+# =========================================================
+# ETHEREUM BLOCK DETAILS
+# =========================================================
+
 @router.get("/ethereum/block/{block_number}")
 async def ethereum_block_details(
     block_number: str
@@ -991,9 +1028,7 @@ async def ethereum_block_details(
 
     try:
 
-        if block_number.startswith(
-            "0x"
-        ):
+        if block_number.startswith("0x"):
 
             block_param = block_number
 
@@ -1026,61 +1061,74 @@ async def ethereum_block_details(
                 detail="Ethereum block not found."
             )
 
-        return {
-            "network": "Ethereum",
+        transactions = block.get(
+            "transactions",
+            []
+        )
 
-            "status": "LIVE",
+        return {
+
+            "network":
+                "Ethereum",
+
+            "status":
+                "LIVE",
 
             "block": {
+
                 "hash":
                     block.get("hash"),
 
-                "height": int(
-                    block.get(
-                        "number",
-                        "0x0"
+                "height":
+                    int(
+                        block.get(
+                            "number",
+                            "0x0"
+                        ),
+                        16
                     ),
-                    16
-                ),
 
-                "timestamp": int(
-                    block.get(
-                        "timestamp",
-                        "0x0"
+                "timestamp":
+                    int(
+                        block.get(
+                            "timestamp",
+                            "0x0"
+                        ),
+                        16
                     ),
-                    16
-                ),
 
-                "tx_count": len(
-                    block.get(
-                        "transactions",
-                        []
-                    )
-                ),
+                "tx_count":
+                    len(transactions),
 
-                "size": int(
-                    block.get(
-                        "size",
-                        "0x0"
+                "transactions":
+                    transactions,
+
+                "size":
+                    int(
+                        block.get(
+                            "size",
+                            "0x0"
+                        ),
+                        16
                     ),
-                    16
-                ),
 
-                "gas_used": int(
-                    block.get(
-                        "gasUsed",
-                        "0x0"
+                "gas_used":
+                    int(
+                        block.get(
+                            "gasUsed",
+                            "0x0"
+                        ),
+                        16
                     ),
-                    16
-                ),
 
-                "gas_limit": int(
-                    block.get(
-                        "gasLimit",
-                        "0x0"
+                "gas_limit":
+                    int(
+                        block.get(
+                            "gasLimit",
+                            "0x0"
+                        ),
+                        16
                     ),
-                    16
-                ),
 
                 "base_fee_per_gas": (
                     int(
@@ -1132,17 +1180,23 @@ async def ethereum_block_details(
                 f"failed: {str(e)}"
             )
         )
-        # =========================================================
+
+
+# =========================================================
 # ETHEREUM WALLET INVESTIGATION
 # =========================================================
 
 @router.get("/ethereum/wallet/{address}")
-async def ethereum_wallet(address: str):
+async def ethereum_wallet(
+    address: str
+):
 
     try:
 
-        # Basic Ethereum address validation
-        if not address.startswith("0x") or len(address) != 42:
+        if (
+            not address.startswith("0x")
+            or len(address) != 42
+        ):
 
             raise HTTPException(
                 status_code=400,
@@ -1156,7 +1210,6 @@ async def ethereum_wallet(address: str):
             }
         ) as client:
 
-            # Get current ETH balance
             balance_hex = await ethereum_rpc(
                 client,
                 "eth_getBalance",
@@ -1166,7 +1219,6 @@ async def ethereum_wallet(address: str):
                 ]
             )
 
-            # Get transaction nonce/count
             transaction_count_hex = await ethereum_rpc(
                 client,
                 "eth_getTransactionCount",
@@ -1176,13 +1228,14 @@ async def ethereum_wallet(address: str):
                 ]
             )
 
-        # Convert Wei → ETH
         balance_wei = int(
             balance_hex,
             16
         )
 
-        balance_eth = balance_wei / 10**18
+        balance_eth = (
+            balance_wei / 10**18
+        )
 
         transaction_count = int(
             transaction_count_hex,
@@ -1190,18 +1243,26 @@ async def ethereum_wallet(address: str):
         )
 
         return {
-            "network": "Ethereum",
 
-            "status": "LIVE",
+            "network":
+                "Ethereum",
+
+            "status":
+                "LIVE",
 
             "wallet": {
-                "address": address,
 
-                "balance_wei": balance_wei,
+                "address":
+                    address,
 
-                "balance_eth": balance_eth,
+                "balance_wei":
+                    balance_wei,
 
-                "transaction_count": transaction_count
+                "balance_eth":
+                    balance_eth,
+
+                "transaction_count":
+                    transaction_count
             },
 
             "source":
@@ -1220,9 +1281,12 @@ async def ethereum_wallet(address: str):
                 f"failed: {str(e)}"
             )
         )
+
+
 # =========================================================
 # ETHEREUM WALLET TRANSACTION HISTORY
 # =========================================================
+
 @router.get("/ethereum/wallet/{address}/transactions")
 async def ethereum_wallet_transactions(
     address: str,
@@ -1234,7 +1298,12 @@ async def ethereum_wallet_transactions(
 ):
 
     try:
-        if not address.startswith("0x") or len(address) != 42:
+
+        if (
+            not address.startswith("0x")
+            or len(address) != 42
+        ):
+
             raise HTTPException(
                 status_code=400,
                 detail="Invalid Ethereum wallet address."
@@ -1246,12 +1315,15 @@ async def ethereum_wallet_transactions(
         )
 
         params = {
-            "items_count": min(max(items_count, 1), 50)
+            "items_count":
+                min(
+                    max(
+                        items_count,
+                        1
+                    ),
+                    50
+                )
         }
-
-        # -------------------------------------------------
-        # BLOCKSCOUT PAGINATION
-        # -------------------------------------------------
 
         if page:
             params["page"] = page
@@ -1267,7 +1339,9 @@ async def ethereum_wallet_transactions(
 
         async with httpx.AsyncClient(
             timeout=20,
-            headers={"User-Agent": "CryptoIntel/1.0"}
+            headers={
+                "User-Agent": "CryptoIntel/1.0"
+            }
         ) as client:
 
             response = await client.get(
@@ -1279,52 +1353,108 @@ async def ethereum_wallet_transactions(
 
         data = response.json()
 
-        items = data.get("items", [])
+        items = data.get(
+            "items",
+            []
+        )
 
         transactions = []
 
         for tx in items:
 
-            from_data = tx.get("from", {})
-            to_data = tx.get("to", {})
+            from_data = (
+                tx.get("from")
+                or {}
+            )
 
-            from_address = from_data.get("hash")
-            to_address = to_data.get("hash")
+            to_data = (
+                tx.get("to")
+                or {}
+            )
 
-            value = tx.get("value")
+            from_address = (
+                from_data.get("hash")
+            )
+
+            to_address = (
+                to_data.get("hash")
+            )
+
+            value = tx.get(
+                "value"
+            )
 
             direction = (
                 "INCOMING"
-                if to_address
-                and to_address.lower() == address.lower()
+                if (
+                    to_address
+                    and to_address.lower()
+                    == address.lower()
+                )
                 else "OUTGOING"
             )
 
             transactions.append({
-                "hash": tx.get("hash"),
-                "timestamp": tx.get("timestamp"),
-                "from": from_address,
-                "to": to_address,
-                "value": value,
-                "success": tx.get("status") == "ok",
-                "direction": direction,
-                "block": tx.get("block"),
-                "fee": tx.get("fee")
+
+                "hash":
+                    tx.get("hash"),
+
+                "timestamp":
+                    tx.get("timestamp"),
+
+                "from":
+                    from_address,
+
+                "to":
+                    to_address,
+
+                "value":
+                    value,
+
+                "success":
+                    tx.get("status") == "ok",
+
+                "direction":
+                    direction,
+
+                "block":
+                    tx.get("block"),
+
+                "fee":
+                    tx.get("fee")
             })
 
+        next_page_params = data.get(
+            "next_page_params"
+        )
+
         return {
-            "network": "Ethereum",
-            "status": "LIVE",
-            "wallet": address,
-            "count": len(transactions),
-            "transactions": transactions,
 
-            # Important for frontend "Load More"
-            "next_page_params": data.get("next_page_params"),
+            "network":
+                "Ethereum",
 
-            "has_more": bool(data.get("next_page_params")),
+            "status":
+                "LIVE",
 
-            "source": "Blockscout Ethereum API"
+            "wallet":
+                address,
+
+            "count":
+                len(transactions),
+
+            "transactions":
+                transactions,
+
+            "next_page_params":
+                next_page_params,
+
+            "has_more":
+                bool(
+                    next_page_params
+                ),
+
+            "source":
+                "Blockscout Ethereum API"
         }
 
     except HTTPException:
@@ -1346,10 +1476,21 @@ async def ethereum_wallet_transactions(
 # =========================================================
 
 @router.get("/ethereum/wallet/{address}/tokens")
-async def ethereum_wallet_tokens(address: str):
+async def ethereum_wallet_tokens(
+    address: str,
+    items_count: int = 50,
+    block_number: str | None = None,
+    index: str | None = None,
+    unique_token: str | None = None
+):
 
     try:
-        if not address.startswith("0x") or len(address) != 42:
+
+        if (
+            not address.startswith("0x")
+            or len(address) != 42
+        ):
+
             raise HTTPException(
                 status_code=400,
                 detail="Invalid Ethereum wallet address."
@@ -1361,13 +1502,34 @@ async def ethereum_wallet_tokens(address: str):
         )
 
         params = {
-            "type": "ERC-20",
-            "items_count": 50
+
+            "type":
+                "ERC-20",
+
+            "items_count":
+                min(
+                    max(
+                        items_count,
+                        1
+                    ),
+                    50
+                )
         }
+
+        if block_number:
+            params["block_number"] = block_number
+
+        if index:
+            params["index"] = index
+
+        if unique_token:
+            params["unique_token"] = unique_token
 
         async with httpx.AsyncClient(
             timeout=20,
-            headers={"User-Agent": "CryptoIntel/1.0"}
+            headers={
+                "User-Agent": "CryptoIntel/1.0"
+            }
         ) as client:
 
             response = await client.get(
@@ -1379,47 +1541,131 @@ async def ethereum_wallet_tokens(address: str):
 
         data = response.json()
 
-        items = data.get("items", [])
+        items = data.get(
+            "items",
+            []
+        )
 
         transfers = []
 
         for tx in items:
 
-            from_data = tx.get("from", {})
-            to_data = tx.get("to", {})
-            token = tx.get("token", {})
+            from_data = (
+                tx.get("from")
+                or {}
+            )
 
-            from_address = from_data.get("hash")
-            to_address = to_data.get("hash")
+            to_data = (
+                tx.get("to")
+                or {}
+            )
+
+            token = (
+                tx.get("token")
+                or {}
+            )
+
+            total = (
+                tx.get("total")
+                or {}
+            )
+
+            from_address = (
+                from_data.get("hash")
+            )
+
+            to_address = (
+                to_data.get("hash")
+            )
 
             direction = (
                 "INCOMING"
-                if to_address and
-                to_address.lower() == address.lower()
+                if (
+                    to_address
+                    and to_address.lower()
+                    == address.lower()
+                )
                 else "OUTGOING"
             )
 
             transfers.append({
-                "hash": tx.get("transaction_hash"),
-                "timestamp": tx.get("timestamp"),
-                "from": from_address,
-                "to": to_address,
-                "token": token.get("name"),
-                "symbol": token.get("symbol"),
-                "token_address": token.get("address"),
-                "value": tx.get("total", {}).get("value"),
-                "decimals": tx.get("total", {}).get("decimals"),
-                "direction": direction
+
+                "hash":
+                    tx.get(
+                        "transaction_hash"
+                    ),
+
+                "timestamp":
+                    tx.get(
+                        "timestamp"
+                    ),
+
+                "from":
+                    from_address,
+
+                "to":
+                    to_address,
+
+                "token":
+                    token.get(
+                        "name"
+                    ),
+
+                "symbol":
+                    token.get(
+                        "symbol"
+                    ),
+
+                "token_address":
+                    token.get(
+                        "address"
+                    ),
+
+                "value":
+                    total.get(
+                        "value"
+                    ),
+
+                "decimals":
+                    total.get(
+                        "decimals"
+                    ),
+
+                "direction":
+                    direction
             })
 
+        next_page_params = data.get(
+            "next_page_params"
+        )
+
         return {
-            "network": "Ethereum",
-            "status": "LIVE",
-            "wallet": address,
-            "count": len(transfers),
-            "token_transfers": transfers,
-            "next_page_params": data.get("next_page_params"),
-            "source": "Blockscout Ethereum API"
+
+            "network":
+                "Ethereum",
+
+            "status":
+                "LIVE",
+
+            "wallet":
+                address,
+
+            "count":
+                len(transfers),
+
+            "token_transfers":
+                transfers,
+
+            "next_page_params":
+                next_page_params,
+
+            "has_more":
+                bool(
+                    next_page_params
+                ),
+
+            "source":
+                "Blockscout Ethereum API"
         }
 
     except HTTPException:
@@ -1432,5 +1678,144 @@ async def ethereum_wallet_tokens(address: str):
             detail=(
                 f"Ethereum token transfer "
                 f"lookup failed: {str(e)}"
+            )
+        )
+
+
+# =========================================================
+# ETHEREUM LIVE TRANSACTIONS
+# =========================================================
+
+@router.get("/ethereum/live-transactions")
+async def ethereum_live_transactions():
+
+    try:
+
+        async with httpx.AsyncClient(
+            timeout=20,
+            headers={
+                "User-Agent": "CryptoIntel/1.0"
+            }
+        ) as client:
+
+            latest_block_hex = await ethereum_rpc(
+                client,
+                "eth_blockNumber",
+                []
+            )
+
+            latest_block = int(
+                latest_block_hex,
+                16
+            )
+
+            block = await ethereum_rpc(
+                client,
+                "eth_getBlockByNumber",
+                [
+                    latest_block_hex,
+                    True
+                ]
+            )
+
+            if not block:
+
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        "Latest Ethereum block "
+                        "not found"
+                    )
+                )
+
+            transactions = []
+
+            for tx in block.get(
+                "transactions",
+                []
+            ):
+
+                transactions.append({
+
+                    "hash":
+                        tx.get("hash"),
+
+                    "from":
+                        tx.get("from"),
+
+                    "to":
+                        tx.get("to"),
+
+                    "value":
+                        int(
+                            tx.get(
+                                "value",
+                                "0x0"
+                            ),
+                            16
+                        ),
+
+                    "gas":
+                        int(
+                            tx.get(
+                                "gas",
+                                "0x0"
+                            ),
+                            16
+                        ),
+
+                    "gas_price":
+                        int(
+                            tx.get(
+                                "gasPrice",
+                                "0x0"
+                            ),
+                            16
+                        ),
+
+                    "nonce":
+                        int(
+                            tx.get(
+                                "nonce",
+                                "0x0"
+                            ),
+                            16
+                        ),
+
+                    "block_number":
+                        latest_block
+                })
+
+        return {
+
+            "network":
+                "Ethereum",
+
+            "status":
+                "LIVE",
+
+            "block":
+                latest_block,
+
+            "transaction_count":
+                len(transactions),
+
+            "transactions":
+                transactions,
+
+            "source":
+                "PublicNode Ethereum JSON-RPC"
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"Ethereum live transactions "
+                f"fetch failed: {str(e)}"
             )
         )

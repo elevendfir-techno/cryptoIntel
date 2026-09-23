@@ -2,11 +2,32 @@
   box-sizing: border-box;
 }
 
+html {
+  background: #060a0f;
+}
+
 body {
   margin: 0;
-  background: #050505;
-  color: #eee;
+  min-width: 320px;
+  background:
+    radial-gradient(
+      circle at 75% -10%,
+      rgba(0, 190, 255, 0.10),
+      transparent 32%
+    ),
+    radial-gradient(
+      circle at 20% 30%,
+      rgba(35, 110, 255, 0.035),
+      transparent 28%
+    ),
+    #060a0f;
+  color: #eaf2f7;
   font-family: Inter, Arial, sans-serif;
+}
+
+button,
+input {
+  font-family: inherit;
 }
 
 .app {
@@ -14,154 +35,384 @@ body {
   min-height: 100vh;
 }
 
+/* =========================================
+   SIDEBAR
+   ========================================= */
+
 aside {
   width: 250px;
-  background: #090909;
-  border-right: 1px solid #202020;
-  padding: 25px 16px;
+  background:
+    linear-gradient(
+      180deg,
+      #081018 0%,
+      #070b10 55%,
+      #06090d 100%
+    );
+  border-right: 1px solid #20303b;
+  padding: 25px 15px;
   position: fixed;
   inset: 0 auto 0 0;
+  z-index: 20;
+  box-shadow: 8px 0 35px rgba(0, 0, 0, 0.25);
 }
 
 .logo {
-  font-weight: 900;
   font-size: 25px;
-  letter-spacing: 1px;
+  font-weight: 900;
+  letter-spacing: 1.4px;
+  color: #f4fbff;
 }
 
 .logo span {
-  font-weight: 400;
+  color: #50d5ff;
+  font-weight: 450;
 }
 
 .scope {
+  margin: 7px 0 29px;
+  color: #71828d;
   font-size: 9px;
-  color: #777;
-  margin: 6px 0 30px;
+  letter-spacing: 1.15px;
 }
 
+/* =========================================
+   NAVIGATION
+   ========================================= */
+
 .nav {
+  position: relative;
   display: block;
   width: 100%;
   text-align: left;
-  border: 0;
-  background: none;
-  color: #888;
-  padding: 12px 14px;
-  border-radius: 7px;
-  margin: 2px 0;
+
+  border: 1px solid transparent;
+  background: transparent;
+
+  color: #83929d;
+  padding: 11px 13px;
+  border-radius: 6px;
+  margin: 3px 0;
+
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
+
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
 }
 
-.nav:hover,
-.nav.active {
-  background: #171717;
-  color: #fff;
+.nav:hover {
+  color: #e4f5fc;
+  background: rgba(40, 150, 190, 0.07);
+  border-color: #1c3a48;
+  transform: translateX(1px);
 }
+
+.nav.active {
+  color: #ffffff;
+
+  background:
+    linear-gradient(
+      90deg,
+      rgba(0, 196, 255, 0.17),
+      rgba(0, 196, 255, 0.035)
+    );
+
+  border-color: #1c526a;
+
+  box-shadow:
+    inset 3px 0 0 #35caff,
+    0 0 18px rgba(0, 174, 255, 0.055);
+}
+
+.nav.active::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #51d9ff;
+  transform: translateY(-50%);
+  box-shadow: 0 0 9px rgba(81, 217, 255, 0.9);
+}
+
+/* =========================================
+   SIDEBAR STATUS
+   ========================================= */
 
 .status {
   position: absolute;
-  bottom: 25px;
   left: 18px;
-  color: #777;
-  font-size: 11px;
+  bottom: 24px;
+
+  color: #72808a;
+  font-size: 10px;
+  letter-spacing: 0.7px;
 }
 
 .status i {
   display: inline-block;
   width: 7px;
   height: 7px;
-  border-radius: 50%;
-  background: #555;
   margin-right: 8px;
+
+  border-radius: 50%;
+  background: #49545d;
 }
 
 .status i.live {
-  background: #4cff9b;
-  box-shadow: 0 0 8px #4cff9b;
+  background: #55e7a1;
+  box-shadow:
+    0 0 7px rgba(85, 231, 161, 0.8),
+    0 0 14px rgba(85, 231, 161, 0.25);
 }
+
+/* =========================================
+   MAIN
+   ========================================= */
 
 main {
   margin-left: 250px;
   width: calc(100% - 250px);
-  padding: 30px 38px;
+  padding: 29px 38px;
 }
+
+/* =========================================
+   HEADER
+   ========================================= */
 
 header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 28px;
+
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+
+  border-bottom: 1px solid #1b2a34;
 }
 
 h1 {
   margin: 0;
-  font-size: 28px;
+
+  color: #f5fbff;
+
+  font-size: 29px;
+  font-weight: 700;
+  letter-spacing: -0.7px;
+  line-height: 1.1;
 }
 
 header p {
-  color: #777;
-  margin-top: 6px;
-  font-size: 12px;
+  margin: 8px 0 0;
+
+  color: #7d8e99;
+  font-size: 11px;
+  letter-spacing: 0.25px;
 }
 
 .badge {
-  font-size: 11px;
-  border: 1px solid #333;
   padding: 8px 12px;
-  border-radius: 20px;
+
+  border: 1px solid #24533f;
+  border-radius: 5px;
+
+  background: rgba(56, 224, 146, 0.055);
+
+  color: #62eca8;
+
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.7px;
+
+  box-shadow:
+    0 0 18px rgba(54, 224, 146, 0.035);
 }
+
+/* =========================================
+   DASHBOARD CARDS
+   ========================================= */
 
 .cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 15px;
-  margin-bottom: 20px;
-}
 
-.card,
-.panel {
-  background: #0b0b0b;
-  border: 1px solid #202020;
-  border-radius: 10px;
+  gap: 14px;
+  margin-bottom: 18px;
 }
 
 .card {
-  padding: 20px;
+  position: relative;
+  overflow: hidden;
+
+  min-height: 120px;
+
+  padding: 18px 19px;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(16, 27, 35, 0.98),
+      rgba(8, 14, 19, 0.98)
+    );
+
+  border: 1px solid #21333e;
+  border-radius: 8px;
+
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.20);
+
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.card::before {
+  content: "";
+
+  position: absolute;
+  top: 0;
+  left: 0;
+
+  width: 100%;
+  height: 1px;
+
+  background:
+    linear-gradient(
+      90deg,
+      #35c9ff,
+      rgba(53, 201, 255, 0.08),
+      transparent
+    );
+}
+
+.card::after {
+  content: "";
+
+  position: absolute;
+
+  right: -30px;
+  bottom: -40px;
+
+  width: 100px;
+  height: 100px;
+
+  border-radius: 50%;
+
+  background: rgba(0, 180, 255, 0.035);
+  filter: blur(12px);
+}
+
+.card:hover {
+  border-color: #2d5264;
+
+  box-shadow:
+    0 12px 35px rgba(0, 0, 0, 0.27),
+    0 0 20px rgba(0, 170, 255, 0.045);
+
+  transform: translateY(-2px);
 }
 
 .card small {
   display: block;
-  color: #777;
-  font-size: 10px;
+
+  color: #71818c;
+
+  font-size: 9px;
+  font-weight: 650;
+
+  letter-spacing: 1.15px;
 }
 
 .card strong {
   display: block;
-  font-size: 30px;
-  margin: 10px 0;
+
+  margin: 12px 0 7px;
+
+  color: #f2f9fc;
+
+  font-size: 29px;
+  font-weight: 700;
+
+  letter-spacing: -0.6px;
+  line-height: 1.05;
 }
 
 .card span {
-  font-size: 11px;
-  color: #666;
+  color: #70808b;
+  font-size: 10px;
 }
 
+/* =========================================
+   PANELS
+   ========================================= */
+
 .panel {
-  padding: 22px;
-  margin-bottom: 20px;
+  position: relative;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(11, 18, 24, 0.98),
+      rgba(7, 11, 15, 0.98)
+    );
+
+  border: 1px solid #1e303a;
+  border-radius: 8px;
+
+  padding: 21px;
+
+  margin-bottom: 18px;
+
+  box-shadow:
+    0 10px 35px rgba(0, 0, 0, 0.18);
 }
 
 .panel h2 {
-  margin: 0 0 18px;
+  margin: 0 0 16px;
+
+  color: #eef7fb;
+
   font-size: 15px;
+  font-weight: 650;
+
+  letter-spacing: 0.15px;
+}
+
+.panel h2::before {
+  content: "";
+
+  display: inline-block;
+
+  width: 3px;
+  height: 13px;
+
+  margin-right: 8px;
+
+  vertical-align: -1px;
+
+  border-radius: 2px;
+
+  background: #3bcaff;
+  box-shadow: 0 0 8px rgba(59, 202, 255, 0.35);
 }
 
 .grid2 {
   display: grid;
+
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
+
+  gap: 18px;
 }
+
+/* =========================================
+   TABLE
+   ========================================= */
 
 .table {
   width: 100%;
@@ -171,6 +422,7 @@ header p {
 .thead,
 .tr {
   display: grid;
+
   grid-template-columns:
     1.1fr
     1.4fr
@@ -178,117 +430,272 @@ header p {
     .8fr
     1.2fr
     .8fr;
+
   gap: 10px;
-  padding: 12px 8px;
+
+  padding: 11px 9px;
+
   align-items: center;
+
+  min-width: 760px;
 }
 
 .thead {
-  color: #666;
-  font-size: 10px;
-  border-bottom: 1px solid #222;
+  color: #63737e;
+
+  font-size: 9px;
+  font-weight: 600;
+
+  text-transform: uppercase;
+  letter-spacing: 0.85px;
+
+  border-bottom: 1px solid #1d2a32;
 }
 
 .tr {
-  font-size: 12px;
-  border-bottom: 1px solid #151515;
+  color: #aebbc3;
+
+  font-size: 11px;
+
+  border-bottom: 1px solid #121d24;
+
+  transition:
+    background 0.12s ease;
+}
+
+.tr:hover {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(38, 174, 222, 0.055),
+      rgba(38, 174, 222, 0.012)
+    );
 }
 
 .tr:last-child {
   border-bottom: 0;
 }
 
+.tr b {
+  color: #e0e9ed;
+  font-weight: 600;
+}
+
 .up {
-  color: #61f59b;
+  color: #62e6a0;
 }
 
 .down {
-  color: #ff7373;
+  color: #ff7777;
 }
 
 .liveDot {
+  color: #5fe7a0;
+
   font-size: 9px;
-  color: #62f5a0;
+  font-weight: 600;
+
+  letter-spacing: 0.3px;
 }
+
+/* =========================================
+   ACTIVITY ROWS
+   ========================================= */
 
 .row,
 .alert {
   display: flex;
+
+  align-items: center;
+
   gap: 12px;
-  padding: 10px 4px;
-  border-bottom: 1px solid #171717;
-  font-size: 12px;
+
+  padding: 10px 5px;
+
+  font-size: 11px;
+
+  border-bottom: 1px solid #142028;
+}
+
+.row:last-child,
+.alert:last-child {
+  border-bottom: 0;
+}
+
+.row b {
+  color: #dce6eb;
+  font-weight: 600;
 }
 
 .row span:nth-child(2) {
-  color: #aaa;
+  color: #a7b4bc;
 }
 
 .row small {
   margin-left: auto;
-  color: #666;
+  color: #65737c;
 }
 
 .alert b {
-  font-size: 9px;
+  padding: 4px 7px;
+
+  color: #dbe6eb;
+
+  font-size: 8px;
+  font-weight: 700;
+
+  letter-spacing: 0.7px;
+
+  border: 1px solid #33414a;
+  border-radius: 3px;
+
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .alert span:nth-child(2) {
-  color: #ddd;
+  color: #d9e3e8;
+}
+
+.alert span:nth-child(3) {
+  color: #8c9aa3;
 }
 
 .big {
-  gap: 20px;
+  gap: 18px;
+  padding: 13px 5px;
 }
 
 .big small {
   margin-left: auto;
-  color: #666;
+  color: #627079;
+  white-space: nowrap;
 }
 
+/* =========================================
+   HERO / EMPTY
+   ========================================= */
+
 .empty {
-  color: #666;
   padding: 20px 0;
-  font-size: 12px;
+
+  color: #687780;
+
+  font-size: 11px;
 }
 
 .hero p {
-  color: #aaa;
-  line-height: 1.7;
   max-width: 800px;
+
+  color: #9cabb3;
+
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+/* =========================================
+   SEARCH
+   ========================================= */
+
+.searchBox {
+  display: flex;
+  align-items: center;
+
+  gap: 8px;
+
+  margin: 14px 0;
 }
 
 input {
-  background: #111;
-  border: 1px solid #333;
-  color: #fff;
-  padding: 12px;
-  border-radius: 6px;
   width: min(650px, 100%);
-  margin-right: 8px;
+
+  padding: 11px 12px;
+
+  background: #080e13;
+
+  border: 1px solid #263843;
+  border-radius: 5px;
+
+  color: #edf5f8;
+
+  outline: none;
+
+  font-size: 11px;
+
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+input:focus {
+  border-color: #2e8eaf;
+
+  box-shadow:
+    0 0 0 2px rgba(46, 142, 175, 0.10),
+    0 0 16px rgba(0, 170, 220, 0.04);
+}
+
+input::placeholder {
+  color: #596872;
 }
 
 .primary {
-  background: #fff;
-  color: #000;
-  border: 0;
-  border-radius: 6px;
-  padding: 12px 18px;
+  padding: 10px 16px;
+
+  background: #e4f1f6;
+
+  color: #071117;
+
+  border: 1px solid #e4f1f6;
+  border-radius: 5px;
+
   cursor: pointer;
+
+  font-size: 11px;
+  font-weight: 700;
+
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
-pre {
-  background: #050505;
-  border: 1px solid #222;
-  padding: 15px;
-  margin-top: 20px;
-  overflow: auto;
-  color: #aaa;
+.primary:hover {
+  background: #ffffff;
+
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 5px 18px rgba(220, 240, 248, 0.10);
 }
 
+.primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
 
 /* =========================================
-   ERC-20 WALLET INVESTIGATION TABLE
+   RAW DATA
+   ========================================= */
+
+pre {
+  margin-top: 20px;
+  padding: 15px;
+
+  background: #05090d;
+
+  border: 1px solid #1d2a32;
+
+  color: #9eabb3;
+
+  font-size: 11px;
+
+  overflow: auto;
+}
+
+/* =========================================
+   ERC-20 WALLET INVESTIGATION
    ========================================= */
 
 .erc-panel {
@@ -334,9 +741,8 @@ pre {
 }
 
 .erc-panel .tr span[title]:hover {
-  color: #fff;
+  color: #effaff;
 }
-
 
 /* =========================================
    RESPONSIVE
@@ -385,5 +791,18 @@ pre {
 
   .cards {
     grid-template-columns: 1fr;
+  }
+
+  header {
+    gap: 12px;
+  }
+
+  .searchBox {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  input {
+    width: 100%;
   }
 }
