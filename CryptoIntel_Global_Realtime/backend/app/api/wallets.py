@@ -62,7 +62,28 @@ async def wallet(
             "txs",
             []
         )
+        
+        # Calculate incoming and outgoing transaction counts
+        incoming_transactions = 0
+        outgoing_transactions = 0
 
+        for tx in transactions:
+            is_incoming = any(
+                output.get("addr") == address
+                for output in tx.get("out", [])
+            )
+
+            is_outgoing = any(
+                input_data.get("prev_out", {}).get("addr") == address
+                for input_data in tx.get("inputs", [])
+            )
+
+            if is_incoming:
+                incoming_transactions += 1
+
+            if is_outgoing:
+                outgoing_transactions += 1
+        
         return {
             "address": address,
             "network": "Bitcoin",
@@ -76,8 +97,8 @@ async def wallet(
 
             "activity": {
                 "confirmed_transactions": transaction_count,
-                "funded_transactions": None,
-                "spent_transactions": None,
+                "funded_transactions": incoming_transactions,
+                "spent_transactions": outgoing_transactions,
                 "mempool_funded": None,
                 "mempool_spent": None
             },
