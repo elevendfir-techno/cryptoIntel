@@ -12,10 +12,10 @@ router = APIRouter(
 
 
 # =========================================================
-# BLOCKCHAIN.COM — BITCOIN
+# MEMPOOL.SPACE — BITCOIN
 # =========================================================
 
-BITCOIN_API = "https://blockchain.info"
+BITCOIN_API = "https://mempool.space/api"
 
 
 # =========================================================
@@ -57,8 +57,20 @@ MAX_TXS_PER_WALLET = 10
 # PUBLIC API PROTECTION
 # =========================================================
 
-REQUEST_DELAY = 10.0
-RETRY_AFTER_429 = 30.0
+REQUEST_DELAY = 1.0
+RETRY_AFTER_429 = 10.0
+
+
+# =========================================================
+# ETHEREUM CONCURRENCY
+# =========================================================
+
+# Independent Ethereum API requests can safely run in
+# parallel. Keep concurrency bounded to reduce the chance
+# of Blockscout rate limiting.
+
+ETHEREUM_REQUEST_CONCURRENCY = 5
+ETHEREUM_METADATA_CONCURRENCY = 5
 
 
 # =========================================================
@@ -71,10 +83,28 @@ CACHE_TTL = 300
 
 
 # =========================================================
-# BITCOIN WALLET DATA
+# BITCOIN ADDRESS VALIDATION
 # =========================================================
 
-async def get_wallet_data(client, address):
+def is_bitcoin_address(address: str) -> bool:
+
+    if not address:
+        return False
+
+    if address.lower().startswith("0x"):
+        return False
+
+    return 26 <= len(address) <= 62
+
+
+# =========================================================
+# BITCOIN WALLET DATA — MEMPOOL
+# =========================================================
+
+async def get_wallet_data(
+    client,
+    address
+):
 
     now = time.time()
 
@@ -83,49 +113,119 @@ async def get_wallet_data(client, address):
     if cached and cached["expires"] > now:
         return cached["data"], False, True
 
-    response = await client.get(
-        f"{BITCOIN_API}/rawaddr/{address}",
-        params={
-            "limit": MAX_TXS_PER_WALLET
+    all_transactions = []
+
+    last_txid = None
+
+    try:
+
+        while len(all_transactions) < MAX_TXS_PER_WALLET:
+
+            if last_txid:
+
+                response = await client.get(
+                    f"{BITCOIN_API}/address/{address}/txs/chain/"
+                    f"{last_txid}",
+                    timeout=30
+                )
+
+            else:
+
+                response = await client.get(
+                    f"{BITCOIN_API}/address/{address}/txs/chain",
+                    timeout=30
+                )
+
+            if response.status_code == 429:
+
+                print(
+                    f"Mempool rate limit for {address}. "
+                    f"Waiting {RETRY_AFTER_429}s..."
+                )
+
+                await asyncio.sleep(
+                    RETRY_AFTER_429
+                )
+
+                if last_txid:
+
+                    response = await client.get(
+                        f"{BITCOIN_API}/address/{address}/txs/chain/"
+                        f"{last_txid}",
+                        timeout=30
+                    )
+
+                else:
+
+                    response = await client.get(
+                        f"{BITCOIN_API}/address/{address}/txs/chain",
+                        timeout=30
+                    )
+
+                if response.status_code == 429:
+                    return None, True, False
+
+            if response.status_code == 404:
+                return None, False, False
+
+            response.raise_for_status()
+
+            page = response.json()
+
+            if not isinstance(page, list):
+                break
+
+            if not page:
+                break
+
+            all_transactions.extend(page)
+
+            if len(page) < 25:
+                break
+
+            next_txid = page[-1].get("txid")
+
+            if not next_txid:
+                break
+
+            if next_txid == last_txid:
+                break
+
+            last_txid = next_txid
+
+            if len(all_transactions) >= MAX_TXS_PER_WALLET:
+                break
+
+            await asyncio.sleep(
+                REQUEST_DELAY
+            )
+
+        transactions = all_transactions[
+            :MAX_TXS_PER_WALLET
+        ]
+
+        data = {
+            "txs": transactions,
+            "source": "Mempool.space Bitcoin API"
         }
-    )
 
-    if response.status_code == 429:
+        WALLET_CACHE[address] = {
+            "data": data,
+            "expires": time.time() + CACHE_TTL
+        }
 
-        print(
-            f"Blockchain.com rate limit for {address}. "
-            f"Waiting {RETRY_AFTER_429}s..."
-        )
+        return data, False, False
 
-        await asyncio.sleep(RETRY_AFTER_429)
+    except httpx.HTTPStatusError as e:
 
-        response = await client.get(
-            f"{BITCOIN_API}/rawaddr/{address}",
-            params={
-                "limit": MAX_TXS_PER_WALLET
-            }
-        )
-
-        if response.status_code == 429:
+        if e.response.status_code == 429:
             return None, True, False
 
-    if response.status_code == 404:
-        return None, False, False
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    WALLET_CACHE[address] = {
-        "data": data,
-        "expires": time.time() + CACHE_TTL
-    }
-
-    return data, False, False
+        raise
 
 
 # =========================================================
-# BLOCKSCOUT PAGINATION HELPER
+# BLOCKSCOUT PAGINATION
 # =========================================================
 
 async def blockscout_paginated_request(
@@ -133,18 +233,6 @@ async def blockscout_paginated_request(
     endpoint,
     max_pages=ETHEREUM_MAX_PAGES
 ):
-    """
-    Fetch Blockscout V2 paginated data.
-
-    Blockscout returns:
-        items
-        next_page_params
-
-    We continue requesting pages until:
-        - no next_page_params
-        - max_pages reached
-        - no items
-    """
 
     all_items = []
 
@@ -162,7 +250,8 @@ async def blockscout_paginated_request(
 
         response = await client.get(
             f"{ETHEREUM_API}{endpoint}",
-            params=params
+            params=params,
+            timeout=30
         )
 
         response.raise_for_status()
@@ -234,6 +323,88 @@ async def get_ethereum_token_transfers(
 
 
 # =========================================================
+# ETHEREUM TOKEN METADATA
+# =========================================================
+
+async def get_ethereum_token_metadata(
+    client,
+    token_address
+):
+
+    if not token_address:
+        return {}
+
+    try:
+
+        response = await client.get(
+            f"{ETHEREUM_API}/?module=token"
+            f"&action=getToken"
+            f"&contractaddress={token_address}",
+            timeout=30
+        )
+
+        if response.status_code == 404:
+            return {}
+
+        response.raise_for_status()
+
+        data = response.json()
+
+        if not isinstance(data, dict):
+            return {}
+
+        result = data.get("result")
+
+        if not isinstance(result, dict):
+            return {}
+
+        name = result.get("name")
+        symbol = result.get("symbol")
+        decimals = result.get("decimals")
+
+        if decimals is not None:
+
+            try:
+                decimals = int(decimals)
+
+            except (TypeError, ValueError):
+                decimals = None
+
+        return {
+
+            "name":
+                name,
+
+            "symbol":
+                symbol,
+
+            "decimals":
+                decimals,
+
+            "contract_address":
+                result.get(
+                    "contractAddress"
+                ),
+
+            "type":
+                result.get("type"),
+
+            "cataloged":
+                result.get("cataloged")
+
+        }
+
+    except Exception as e:
+
+        print(
+            f"Ethereum token metadata lookup failed "
+            f"for {token_address}: {e}"
+        )
+
+        return {}
+
+
+# =========================================================
 # ETHEREUM ADDRESS DETAILS
 # =========================================================
 
@@ -243,12 +414,48 @@ async def get_ethereum_address_details(
 ):
 
     response = await client.get(
-        f"{ETHEREUM_API}/addresses/{address}"
+        f"{ETHEREUM_API}/addresses/{address}",
+        timeout=30
     )
 
     response.raise_for_status()
 
     return response.json()
+
+
+# =========================================================
+# SAFE BLOCKSCOUT ADDRESS EXTRACTION
+# =========================================================
+
+def get_blockscout_address(data):
+
+    if isinstance(data, str):
+        return data
+
+    if not isinstance(data, dict):
+        return None
+
+    return (
+        data.get("hash")
+        or data.get("address_hash")
+        or data.get("address")
+    )
+
+
+# =========================================================
+# SAFE BLOCKSCOUT TRANSACTION HASH
+# =========================================================
+
+def get_transaction_hash(data):
+
+    if not isinstance(data, dict):
+        return None
+
+    return (
+        data.get("hash")
+        or data.get("transaction_hash")
+        or data.get("tx_hash")
+    )
 
 
 # =========================================================
@@ -284,15 +491,39 @@ async def ethereum_fundflow(
         root_address.lower()
     }
 
+    # Global investigation-level token metadata cache.
+    token_metadata_cache = {}
+
     wallets_per_hop = {
         0: 1
     }
 
     # =====================================================
-    # ROOT ADDRESS DETAILS
+    # CONCURRENCY CONTROLS
     # =====================================================
 
-    address_details = None
+    request_semaphore = asyncio.Semaphore(
+        ETHEREUM_REQUEST_CONCURRENCY
+    )
+
+    metadata_semaphore = asyncio.Semaphore(
+        ETHEREUM_METADATA_CONCURRENCY
+    )
+
+    async def limited_metadata_lookup(
+        token_address
+    ):
+
+        async with metadata_semaphore:
+
+            return await get_ethereum_token_metadata(
+                client,
+                token_address
+            )
+
+    # =====================================================
+    # ROOT ADDRESS DETAILS
+    # =====================================================
 
     try:
 
@@ -323,56 +554,190 @@ async def ethereum_fundflow(
         next_hop = current_hop + 1
 
         if next_hop not in wallets_per_hop:
-
             wallets_per_hop[next_hop] = 0
 
         # =================================================
-        # NATIVE ETH TRANSACTIONS
+        # PARALLEL DATA COLLECTION
+        # =================================================
+        #
+        # Previously:
+        #
+        # transactions -> wait
+        # token transfers -> wait
+        #
+        # Now:
+        #
+        # transactions -----\
+        #                    > parallel
+        # token transfers ---/
+        #
         # =================================================
 
-        try:
+        async def load_transactions():
 
-            transactions = (
-                await get_ethereum_transactions(
-                    client,
-                    current_address
+            try:
+
+                async with request_semaphore:
+
+                    return await get_ethereum_transactions(
+                        client,
+                        current_address
+                    )
+
+            except Exception as e:
+
+                print(
+                    f"Ethereum transaction lookup failed "
+                    f"for {current_address}: {e}"
                 )
-            )
 
-        except Exception:
+                return []
 
-            transactions = []
+        async def load_token_transfers():
+
+            try:
+
+                async with request_semaphore:
+
+                    return await get_ethereum_token_transfers(
+                        client,
+                        current_address
+                    )
+
+            except Exception as e:
+
+                print(
+                    f"Ethereum token transfer lookup failed "
+                    f"for {current_address}: {e}"
+                )
+
+                return []
+
+        transactions, token_transfers = await asyncio.gather(
+            load_transactions(),
+            load_token_transfers()
+        )
 
         transactions = transactions[
             :MAX_TXS_PER_WALLET
         ]
 
-        for tx in transactions:
+        token_transfers = token_transfers[
+            :ETHEREUM_MAX_TOKEN_TRANSFERS
+        ]
 
-            from_data = tx.get("from") or {}
+        # =================================================
+        # PRE-COLLECT TOKEN ADDRESSES
+        # =================================================
+        #
+        # Instead of requesting metadata one-by-one while
+        # processing every transfer, first collect unique
+        # token addresses.
+        #
+        # =================================================
 
-            to_data = tx.get("to") or {}
+        token_addresses = set()
 
-            from_address = (
-                from_data.get("hash")
-                if isinstance(from_data, dict)
-                else None
+        for transfer in token_transfers:
+
+            token_data = transfer.get("token") or {}
+
+            if not isinstance(token_data, dict):
+                token_data = {}
+
+            token_address = (
+                token_data.get("address")
+                or token_data.get("hash")
+                or token_data.get("address_hash")
+                or transfer.get("token_address")
             )
 
-            to_address = (
-                to_data.get("hash")
-                if isinstance(to_data, dict)
-                else None
+            if token_address:
+
+                token_addresses.add(
+                    token_address.lower()
+                )
+
+        # =================================================
+        # PARALLEL TOKEN METADATA
+        # =================================================
+
+        metadata_addresses_to_fetch = [
+
+            token_address
+
+            for token_address in token_addresses
+
+            if token_address
+            not in token_metadata_cache
+        ]
+
+        if metadata_addresses_to_fetch:
+
+            metadata_results = await asyncio.gather(
+
+                *[
+                    limited_metadata_lookup(
+                        token_address
+                    )
+
+                    for token_address
+                    in metadata_addresses_to_fetch
+                ],
+
+                return_exceptions=True
+            )
+
+            for (
+                token_address,
+                metadata
+            ) in zip(
+                metadata_addresses_to_fetch,
+                metadata_results
+            ):
+
+                if isinstance(
+                    metadata,
+                    Exception
+                ):
+
+                    print(
+                        "Ethereum token metadata "
+                        f"parallel lookup failed for "
+                        f"{token_address}: {metadata}"
+                    )
+
+                    token_metadata_cache[
+                        token_address
+                    ] = {}
+
+                else:
+
+                    token_metadata_cache[
+                        token_address
+                    ] = metadata
+
+        # =================================================
+        # NATIVE ETH TRANSACTIONS
+        # =================================================
+
+        for tx in transactions:
+
+            from_address = get_blockscout_address(
+                tx.get("from")
+            )
+
+            to_address = get_blockscout_address(
+                tx.get("to")
             )
 
             if not from_address or not to_address:
                 continue
 
-            tx_hash = (
-                tx.get("hash")
-                or tx.get("transaction_hash")
-                or "unknown"
-            )
+            tx_hash = get_transaction_hash(tx)
+
+            if not tx_hash:
+                continue
 
             raw_value = tx.get(
                 "value",
@@ -402,13 +767,11 @@ async def ethereum_fundflow(
             ):
 
                 counterparty = to_address
-
                 direction = "OUTGOING"
 
             else:
 
                 counterparty = from_address
-
                 direction = "INCOMING"
 
             # =============================================
@@ -434,7 +797,33 @@ async def ethereum_fundflow(
                 wallets_per_hop[next_hop] += 1
 
             # =============================================
-            # ETH EDGE
+            # TRANSACTION CLASSIFICATION
+            # =============================================
+
+            tx_method = (
+                tx.get("method")
+                or tx.get("method_name")
+                or tx.get("function_name")
+            )
+
+            has_native_value = (
+                value_wei > 0
+            )
+
+            if has_native_value:
+
+                transfer_type = "native"
+                edge_type = "native"
+                asset = "ETH"
+
+            else:
+
+                transfer_type = "contract_interaction"
+                edge_type = "contract_interaction"
+                asset = "ETH"
+
+            # =============================================
+            # ETHEREUM EDGE
             # =============================================
 
             edges.append({
@@ -451,23 +840,50 @@ async def ethereum_fundflow(
                 "transaction_hash":
                     tx_hash,
 
+                "txid":
+                    tx_hash,
+
+                "hash":
+                    tx_hash,
+
                 "asset":
+                    asset,
+
+                "token_symbol":
                     "ETH",
 
+                "token_name":
+                    "Ethereum",
+
+                "token_address":
+                    None,
+
                 "value":
+                    value_eth,
+
+                "value_eth":
                     value_eth,
 
                 "value_raw":
                     str(raw_value),
 
+                "decimals":
+                    18,
+
                 "direction":
                     direction,
 
-                "hop":
-                    next_hop,
+                "transfer_type":
+                    transfer_type,
 
                 "type":
-                    "native"
+                    edge_type,
+
+                "method":
+                    tx_method,
+
+                "hop":
+                    next_hop
 
             })
 
@@ -476,14 +892,10 @@ async def ethereum_fundflow(
             # =============================================
 
             if (
-
                 counterparty in nodes
-
                 and counterparty.lower()
                 not in visited
-
                 and next_hop < hops
-
             ):
 
                 visited.add(
@@ -501,95 +913,82 @@ async def ethereum_fundflow(
         # ERC-20 TOKEN TRANSFERS
         # =================================================
 
-        try:
-
-            token_transfers = (
-                await get_ethereum_token_transfers(
-                    client,
-                    current_address
-                )
-            )
-
-        except Exception:
-
-            token_transfers = []
-
-        token_transfers = token_transfers[
-            :ETHEREUM_MAX_TOKEN_TRANSFERS
-        ]
-
         for transfer in token_transfers:
 
-            from_data = (
+            from_address = get_blockscout_address(
                 transfer.get("from")
-                or {}
             )
 
-            to_data = (
+            to_address = get_blockscout_address(
                 transfer.get("to")
-                or {}
-            )
-
-            from_address = (
-                from_data.get("hash")
-                if isinstance(from_data, dict)
-                else None
-            )
-
-            to_address = (
-                to_data.get("hash")
-                if isinstance(to_data, dict)
-                else None
             )
 
             if not from_address or not to_address:
                 continue
 
-            tx_hash = (
-                transfer.get(
-                    "transaction_hash"
-                )
-                or transfer.get(
-                    "tx_hash"
-                )
-                or transfer.get(
-                    "hash"
-                )
-                or "unknown"
+            tx_hash = get_transaction_hash(
+                transfer
             )
+
+            if not tx_hash:
+                continue
 
             # =============================================
             # TOKEN INFORMATION
             # =============================================
 
-            token_data = (
-                transfer.get("token")
-                or {}
-            )
+            token_data = transfer.get("token") or {}
 
-            if not isinstance(
-                token_data,
-                dict
-            ):
-
+            if not isinstance(token_data, dict):
                 token_data = {}
 
-            token_name = token_data.get(
-                "name"
+            token_name = (
+                token_data.get("name")
+                or transfer.get("token_name")
             )
 
-            token_symbol = token_data.get(
-                "symbol"
+            token_symbol = (
+                token_data.get("symbol")
+                or transfer.get("token_symbol")
             )
 
             token_address = (
-                token_data.get(
-                    "address"
-                )
-                or token_data.get(
-                    "hash"
-                )
+                token_data.get("address")
+                or token_data.get("hash")
+                or token_data.get("address_hash")
+                or transfer.get("token_address")
             )
+
+            # =============================================
+            # TOKEN METADATA ENRICHMENT
+            # =============================================
+
+            if token_address:
+
+                token_key = token_address.lower()
+
+                metadata = token_metadata_cache.get(
+                    token_key,
+                    {}
+                )
+
+                if not token_name:
+                    token_name = (
+                        metadata.get("name")
+                    )
+
+                if not token_symbol:
+                    token_symbol = (
+                        metadata.get("symbol")
+                    )
+
+                metadata_decimals = (
+                    metadata.get("decimals")
+                )
+
+            else:
+
+                metadata_decimals = None
 
             # =============================================
             # TOKEN VALUE
@@ -600,19 +999,16 @@ async def ethereum_fundflow(
                 or {}
             )
 
-            if isinstance(
-                total_data,
-                dict
-            ):
+            if isinstance(total_data, dict):
 
                 raw_token_value = (
-                    total_data.get(
-                        "value"
-                    )
-                    or total_data.get(
-                        "amount"
-                    )
-                    or "0"
+                    total_data.get("value")
+                    if total_data.get("value") is not None
+                    else total_data.get("amount")
+                )
+
+                transfer_decimals = (
+                    total_data.get("decimals")
                 )
 
             else:
@@ -621,45 +1017,88 @@ async def ethereum_fundflow(
                     total_data
                 )
 
-            decimals = (
-                token_data.get(
-                    "decimals"
+                transfer_decimals = None
+
+            if raw_token_value is None:
+                raw_token_value = "0"
+
+            # IMPORTANT:
+            # Do not use "or" here.
+            # 0 is a valid ERC-20 decimals value.
+
+            decimals_value = (
+                metadata_decimals
+                if metadata_decimals is not None
+                else (
+                    token_data.get("decimals")
+                    if token_data.get("decimals") is not None
+                    else (
+                        transfer_decimals
+                        if transfer_decimals is not None
+                        else transfer.get("decimals")
+                    )
                 )
-                or transfer.get(
-                    "decimals"
-                )
-                or 0
             )
+
+            decimals = None
 
             try:
 
-                decimals = int(
-                    decimals
-                )
+                if decimals_value is not None:
+
+                    decimals = int(
+                        decimals_value
+                    )
+
+                    if (
+                        decimals < 0
+                        or decimals > 36
+                    ):
+                        decimals = None
 
             except (
                 TypeError,
                 ValueError
             ):
 
-                decimals = 0
+                decimals = None
 
-            try:
+            # =============================================
+            # HUMAN READABLE TOKEN VALUE
+            # =============================================
 
-                token_value = (
-                    int(raw_token_value)
-                    / (
-                        10 ** decimals
+            token_value = None
+
+            if decimals is not None:
+
+                try:
+
+                    raw_integer = int(
+                        raw_token_value
                     )
-                )
 
-            except (
-                TypeError,
-                ValueError,
-                OverflowError
-            ):
+                    token_value = (
+                        raw_integer
+                        / (10 ** decimals)
+                    )
 
-                token_value = 0
+                except (
+                    TypeError,
+                    ValueError,
+                    OverflowError
+                ):
+
+                    token_value = None
+
+            # =============================================
+            # SAFE TOKEN LABEL
+            # =============================================
+
+            if not token_symbol:
+                token_symbol = "UNKNOWN"
+
+            if not token_name:
+                token_name = "Unknown Token"
 
             # =============================================
             # DIRECTION
@@ -671,13 +1110,11 @@ async def ethereum_fundflow(
             ):
 
                 counterparty = to_address
-
                 direction = "OUTGOING"
 
             else:
 
                 counterparty = from_address
-
                 direction = "INCOMING"
 
             # =============================================
@@ -693,23 +1130,33 @@ async def ethereum_fundflow(
                     continue
 
                 nodes[counterparty] = {
-                    "id": counterparty,
-                    "address": counterparty,
-                    "network": "Ethereum",
-                    "hop": next_hop,
-                    "type": "wallet"
+                    "id":
+                        counterparty,
+
+                    "address":
+                        counterparty,
+
+                    "network":
+                        "Ethereum",
+
+                    "hop":
+                        next_hop,
+
+                    "type":
+                        "wallet"
                 }
 
                 wallets_per_hop[next_hop] += 1
 
             # =============================================
-            # TOKEN EDGE
+            # ERC-20 EDGE
             # =============================================
 
             edges.append({
 
                 "id":
-                    f"erc20-{tx_hash}-{current_address}",
+                    f"erc20-{tx_hash}-{current_address}-"
+                    f"{token_address or 'unknown'}",
 
                 "source":
                     from_address,
@@ -718,6 +1165,12 @@ async def ethereum_fundflow(
                     to_address,
 
                 "transaction_hash":
+                    tx_hash,
+
+                "txid":
+                    tx_hash,
+
+                "hash":
                     tx_hash,
 
                 "asset":
@@ -735,23 +1188,37 @@ async def ethereum_fundflow(
                 "value":
                     token_value,
 
+                "value_token":
+                    token_value,
+
                 "value_raw":
-                    str(
-                        raw_token_value
-                    ),
+                    str(raw_token_value),
 
                 "decimals":
                     decimals,
 
+                "metadata_status":
+                    (
+                        "VERIFIED"
+                        if (
+                            token_address
+                            and decimals is not None
+                            and token_symbol != "UNKNOWN"
+                        )
+                        else "PARTIAL"
+                    ),
+
                 "direction":
                     direction,
 
-                "hop":
-                    next_hop,
+                "transfer_type":
+                    "token",
 
                 "type":
-                    "token"
+                    "token",
 
+                "hop":
+                    next_hop
             })
 
             # =============================================
@@ -759,14 +1226,10 @@ async def ethereum_fundflow(
             # =============================================
 
             if (
-
                 counterparty in nodes
-
                 and counterparty.lower()
                 not in visited
-
                 and next_hop < hops
-
             ):
 
                 visited.add(
@@ -789,17 +1252,12 @@ async def ethereum_fundflow(
     for edge in edges:
 
         key = (
-
             edge.get("source"),
-
             edge.get("target"),
-
             edge.get("transaction_hash"),
-
             edge.get("type"),
-
+            edge.get("token_address"),
             edge.get("value_raw")
-
         )
 
         unique_edges[key] = edge
@@ -814,19 +1272,11 @@ async def ethereum_fundflow(
 
     unique_transaction_hashes = {
 
-        edge.get(
-            "transaction_hash"
-        )
+        edge.get("transaction_hash")
 
         for edge in final_edges
 
-        if edge.get(
-            "transaction_hash"
-        )
-        and edge.get(
-            "transaction_hash"
-        ) != "unknown"
-
+        if edge.get("transaction_hash")
     }
 
     # =====================================================
@@ -845,7 +1295,6 @@ async def ethereum_fundflow(
         ],
 
         default=0
-
     )
 
     hops_traced = min(
@@ -863,10 +1312,16 @@ async def ethereum_fundflow(
 
         for edge in final_edges
 
-        if edge.get(
-            "type"
-        ) == "native"
+        if edge.get("type") == "native"
+    ]
 
+    contract_interaction_edges = [
+
+        edge
+
+        for edge in final_edges
+
+        if edge.get("type") == "contract_interaction"
     ]
 
     token_edges = [
@@ -875,17 +1330,20 @@ async def ethereum_fundflow(
 
         for edge in final_edges
 
-        if edge.get(
-            "type"
-        ) == "token"
-
+        if edge.get("type") == "token"
     ]
 
     # =====================================================
-    # FINAL RESPONSE
+    # FINAL ETHEREUM RESPONSE
     # =====================================================
 
     return {
+
+        "root":
+            root_address,
+
+        "root_wallet":
+            root_address,
 
         "network":
             "Ethereum",
@@ -893,8 +1351,8 @@ async def ethereum_fundflow(
         "status":
             "LIVE",
 
-        "root_wallet":
-            root_address,
+        "message":
+            "Live Ethereum fund-flow analysis completed.",
 
         "address_details":
             address_details,
@@ -905,11 +1363,20 @@ async def ethereum_fundflow(
         "hops_traced":
             hops_traced,
 
+        "wallet_count":
+            len(nodes),
+
         "wallets":
             len(nodes),
 
-        "edges":
+        "edge_count":
             len(final_edges),
+
+        "edges":
+            final_edges,
+
+        "transactions_scanned":
+            len(unique_transaction_hashes),
 
         "transactions":
             len(unique_transaction_hashes),
@@ -917,13 +1384,14 @@ async def ethereum_fundflow(
         "native_eth_transfers":
             len(native_edges),
 
+        "contract_interactions":
+            len(contract_interaction_edges),
+
         "erc20_transfers":
             len(token_edges),
 
         "nodes":
-            list(
-                nodes.values()
-            ),
+            list(nodes.values()),
 
         "edges_data":
             final_edges,
@@ -947,12 +1415,10 @@ async def ethereum_fundflow(
 
             "ethereum_max_pages":
                 ETHEREUM_MAX_PAGES
-
         },
 
         "source":
             "Blockscout Ethereum API"
-
     }
 
 
@@ -992,9 +1458,7 @@ async def fundflow(
 
     if network == "ethereum":
 
-        if not is_ethereum_address(
-            address
-        ):
+        if not is_ethereum_address(address):
 
             raise HTTPException(
                 status_code=400,
@@ -1038,17 +1502,7 @@ async def fundflow(
     # BITCOIN ADDRESS VALIDATION
     # =====================================================
 
-    if address.lower().startswith("0x"):
-
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Ethereum-style address detected. "
-                "Please enter a Bitcoin address."
-            )
-        )
-
-    if len(address) < 26 or len(address) > 62:
+    if not is_bitcoin_address(address):
 
         raise HTTPException(
             status_code=400,
@@ -1140,15 +1594,11 @@ async def fundflow(
                     if limited:
 
                         rate_limited = True
-
                         break
 
                     if from_cache:
-
                         cached_requests += 1
-
                     else:
-
                         requests_made += 1
 
                     if not wallet_data:
@@ -1169,9 +1619,7 @@ async def fundflow(
 
                     for tx in transactions:
 
-                        txid = tx.get(
-                            "hash"
-                        )
+                        txid = tx.get("txid")
 
                         if not txid:
                             continue
@@ -1181,20 +1629,18 @@ async def fundflow(
                         # =================================
 
                         for vin in tx.get(
-                            "inputs",
+                            "vin",
                             []
                         ):
 
-                            prev_out = (
-                                vin.get(
-                                    "prev_out"
-                                )
+                            prevout = (
+                                vin.get("prevout")
                                 or {}
                             )
 
                             source_address = (
-                                prev_out.get(
-                                    "addr"
+                                prevout.get(
+                                    "scriptpubkey_address"
                                 )
                             )
 
@@ -1210,7 +1656,7 @@ async def fundflow(
                             try:
 
                                 value_sats = int(
-                                    prev_out.get(
+                                    prevout.get(
                                         "value",
                                         0
                                     )
@@ -1228,13 +1674,16 @@ async def fundflow(
                                 nodes[source_address] = {
                                     "id":
                                         source_address,
+
                                     "type":
                                         "wallet",
+
                                     "label":
                                         (
                                             source_address[:12]
                                             + "..."
                                         ),
+
                                     "hop":
                                         current_hop
                                 }
@@ -1253,25 +1702,23 @@ async def fundflow(
                                 "value_sats":
                                     value_sats,
 
+                                "value_btc":
+                                    value_sats / 100000000,
+
                                 "type":
                                     "incoming",
 
                                 "hop":
                                     current_hop
-
                             })
 
                             if (
-
                                 source_address
                                 not in processed_wallets
-
                                 and source_address
                                 not in next_wallets
-
                                 and len(next_wallets)
                                 < MAX_WALLETS_PER_HOP
-
                             ):
 
                                 next_wallets.append(
@@ -1283,13 +1730,13 @@ async def fundflow(
                         # =================================
 
                         for vout in tx.get(
-                            "out",
+                            "vout",
                             []
                         ):
 
                             destination_address = (
                                 vout.get(
-                                    "addr"
+                                    "scriptpubkey_address"
                                 )
                             )
 
@@ -1323,13 +1770,16 @@ async def fundflow(
                                 nodes[destination_address] = {
                                     "id":
                                         destination_address,
+
                                     "type":
                                         "wallet",
+
                                     "label":
                                         (
                                             destination_address[:12]
                                             + "..."
                                         ),
+
                                     "hop":
                                         current_hop
                                 }
@@ -1348,25 +1798,23 @@ async def fundflow(
                                 "value_sats":
                                     value_sats,
 
+                                "value_btc":
+                                    value_sats / 100000000,
+
                                 "type":
                                     "outgoing",
 
                                 "hop":
                                     current_hop
-
                             })
 
                             if (
-
                                 destination_address
                                 not in processed_wallets
-
                                 and destination_address
                                 not in next_wallets
-
                                 and len(next_wallets)
                                 < MAX_WALLETS_PER_HOP
-
                             ):
 
                                 next_wallets.append(
@@ -1390,17 +1838,11 @@ async def fundflow(
             for edge in edges:
 
                 key = (
-
                     edge["source"],
-
                     edge["target"],
-
                     edge["txid"],
-
                     edge["type"],
-
                     edge["value_sats"]
-
                 )
 
                 unique_edges[key] = edge
@@ -1408,6 +1850,10 @@ async def fundflow(
             final_edges = list(
                 unique_edges.values()
             )
+
+            # =================================================
+            # HOPS
+            # =================================================
 
             hops_traced = max(
                 [
@@ -1425,12 +1871,16 @@ async def fundflow(
                 hops_traced
             )
 
+            # =================================================
+            # STATUS
+            # =================================================
+
             if rate_limited:
 
                 status = "PARTIAL"
 
                 message = (
-                    "Blockchain.com rate limit reached. "
+                    "Mempool.space rate limit reached. "
                     "Cached and partial fund-flow data returned."
                 )
 
@@ -1507,12 +1957,10 @@ async def fundflow(
 
                     "retry_after_429_seconds":
                         RETRY_AFTER_429
-
                 },
 
                 "source":
-                    "Blockchain.com Blockchain Data API"
-
+                    "Mempool.space Bitcoin API"
             }
 
     except HTTPException:
@@ -1522,6 +1970,7 @@ async def fundflow(
 
         raise HTTPException(
             status_code=502,
-            detail=(f"Fund flow lookup failed: {str(e)}"
-    )
-)
+            detail=(
+                f"Fund flow lookup failed: {str(e)}"
+            )
+        )

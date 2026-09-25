@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const API = "https://cryptointel-backend-fx16.onrender.com";
+const API = "http://127.0.0.1:8888";
 type Market = {symbol:string; exchange:string; price:number; volume:number; change24h:number; timestamp:string};
 type Alert = {type:string; severity:string; message:string; timestamp:string};
 
@@ -1905,38 +1905,77 @@ function WalletSearch() {
     </section>
   );
 }
-function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
-  const root=nodes.find(n=>n.hop===0) || nodes[0];
+function FundFlowGraph({
+  nodes,
+  edges,
+  edges_data
+}: {
+  nodes: any[];
+  edges: any[];
+  edges_data?: any[];
+}) {
+  const root =
+    nodes.find((n: any) => n.hop === 0) ||
+    nodes[0];
 
-  const hop1=nodes.filter(n=>n.hop===1).slice(0,12);
-  const hop2=nodes.filter(n=>n.hop===2).slice(0,24);
+  const hop1 = nodes
+    .filter((n: any) => n.hop === 1)
+    .slice(0, 12);
 
-  const positions: Record<string,{x:number;y:number}> = {};
+  const hop2 = nodes
+    .filter((n: any) => n.hop === 2)
+    .slice(0, 24);
 
-  if(root){
-    positions[root.id]={x:500,y:260};
+  const graphEdges =
+    edges.length > 0
+      ? edges
+      : (edges_data || []);
+
+  const positions: {
+    [key: string]: {
+      x: number;
+      y: number;
+    };
+  } = {};
+
+  if (root && root.id) {
+    positions[String(root.id)] = {
+      x: 500,
+      y: 260
+    };
   }
 
-  hop1.forEach((node:any,i:number)=>{
-    const angle=(i/hop1.length)*Math.PI*2;
+  hop1.forEach((node: any, i: number) => {
+    if (!node.id) return;
 
-    positions[node.id]={
-      x:500+170*Math.cos(angle),
-      y:260+150*Math.sin(angle)
+    const angle =
+      (i / Math.max(hop1.length, 1)) *
+      Math.PI *
+      2;
+
+    positions[String(node.id)] = {
+      x: 500 + 170 * Math.cos(angle),
+      y: 260 + 150 * Math.sin(angle)
     };
   });
 
-  hop2.forEach((node:any,i:number)=>{
-    const angle=(i/hop2.length)*Math.PI*2;
+  hop2.forEach((node: any, i: number) => {
+    if (!node.id) return;
 
-    positions[node.id]={
-      x:500+350*Math.cos(angle),
-      y:260+210*Math.sin(angle)
+    const angle =
+      (i / Math.max(hop2.length, 1)) *
+      Math.PI *
+      2;
+
+    positions[String(node.id)] = {
+      x: 500 + 350 * Math.cos(angle),
+      y: 260 + 210 * Math.sin(angle)
     };
   });
 
   return (
     <section className="panel">
+
       <h2>Fund Flow Graph</h2>
 
       <p>
@@ -1945,11 +1984,11 @@ function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
 
       <div
         style={{
-          background:"#050505",
-          border:"1px solid #222",
-          borderRadius:"8px",
-          padding:"20px",
-          overflow:"auto"
+          background: "#050505",
+          border: "1px solid #222",
+          borderRadius: "8px",
+          padding: "20px",
+          overflow: "auto"
         }}
       >
 
@@ -1961,19 +2000,25 @@ function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
 
           {/* CONNECTIONS */}
 
-          {edges.slice(0,60).map((edge:any,i:number)=>{
+          {graphEdges
+            .slice(0, 60)
+            .map((edge: any, i: number) => {
 
-            const source=positions[edge.source];
-            const target=positions[edge.target];
+              const source =
+                positions[String(edge.source)];
 
-            if(!source || !target){
-              return null;
-            }
+              const target =
+                positions[String(edge.target)];
 
-            return (
-              <g key={`${edge.txid}-${i}`}>
+              if (!source || !target) {
+                return null;
+              }
 
+              return (
                 <line
+                  key={
+                    `${edge.txid || edge.hash || i}-${i}`
+                  }
                   x1={source.x}
                   y1={source.y}
                   x2={target.x}
@@ -1981,15 +2026,13 @@ function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
                   stroke="#555"
                   strokeWidth="1.5"
                 />
-
-              </g>
-            );
-          })}
+              );
+            })}
 
 
-          {/* ROOT WALLET */}
+          {/* ROOT */}
 
-          {root && (
+          {root && root.id && (
             <g>
 
               <circle
@@ -2019,25 +2062,26 @@ function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
                 fill="#aaa"
                 fontSize="8"
               >
-                {root.id.slice(0,8)}...
+                {String(root.id).slice(0, 8)}...
               </text>
 
             </g>
           )}
 
 
-          {/* HOP 1 WALLETS */}
+          {/* HOP 1 */}
 
-          {hop1.map((node:any)=>{
+          {hop1.map((node: any) => {
 
-            const position=positions[node.id];
+            const position =
+              positions[String(node.id)];
 
-            if(!position){
+            if (!position) {
               return null;
             }
 
             return (
-              <g key={node.id}>
+              <g key={String(node.id)}>
 
                 <circle
                   cx={position.x}
@@ -2050,7 +2094,7 @@ function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
 
                 <text
                   x={position.x}
-                  y={position.y-2}
+                  y={position.y - 2}
                   textAnchor="middle"
                   fill="#fff"
                   fontSize="9"
@@ -2061,12 +2105,12 @@ function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
 
                 <text
                   x={position.x}
-                  y={position.y+9}
+                  y={position.y + 9}
                   textAnchor="middle"
                   fill="#aaa"
                   fontSize="7"
                 >
-                  {node.id.slice(0,6)}...
+                  {String(node.id).slice(0, 6)}...
                 </text>
 
               </g>
@@ -2074,18 +2118,19 @@ function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
           })}
 
 
-          {/* HOP 2 WALLETS */}
+          {/* HOP 2 */}
 
-          {hop2.map((node:any)=>{
+          {hop2.map((node: any) => {
 
-            const position=positions[node.id];
+            const position =
+              positions[String(node.id)];
 
-            if(!position){
+            if (!position) {
               return null;
             }
 
             return (
-              <g key={node.id}>
+              <g key={String(node.id)}>
 
                 <circle
                   cx={position.x}
@@ -2098,7 +2143,7 @@ function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
 
                 <text
                   x={position.x}
-                  y={position.y-1}
+                  y={position.y - 1}
                   textAnchor="middle"
                   fill="#aaa"
                   fontSize="8"
@@ -2108,12 +2153,12 @@ function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
 
                 <text
                   x={position.x}
-                  y={position.y+9}
+                  y={position.y + 9}
                   textAnchor="middle"
                   fill="#777"
                   fontSize="6"
                 >
-                  {node.id.slice(0,6)}...
+                  {String(node.id).slice(0, 6)}...
                 </text>
 
               </g>
@@ -2129,12 +2174,12 @@ function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
 
       <div
         style={{
-          display:"flex",
-          gap:"20px",
-          marginTop:"12px",
-          color:"#777",
-          fontSize:"10px",
-          flexWrap:"wrap"
+          display: "flex",
+          gap: "20px",
+          marginTop: "12px",
+          color: "#777",
+          fontSize: "10px",
+          flexWrap: "wrap"
         }}
       >
 
@@ -2151,7 +2196,7 @@ function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
         </span>
 
         <span>
-          EDGES: {edges.length}
+          EDGES: {graphEdges.length}
         </span>
 
       </div>
@@ -2159,15 +2204,41 @@ function FundFlowGraph({nodes,edges}:{nodes:any[];edges:any[]}){
     </section>
   );
 }
-function FundFlow(){
-  const [a,setA]=useState("");
-  const [r,setR]=useState<any>(null);
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState("");
 
-  const traceFlow=async()=>{
-    if(!a.trim()){
-      setError("Please enter a Bitcoin wallet address.");
+
+function FundFlow() {
+
+  const [network, setNetwork] =
+    useState<"bitcoin" | "ethereum">("bitcoin");
+
+  const [a, setA] =
+    useState("");
+
+  const [r, setR] =
+    useState<any>(null);
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+
+  /* TRACE FLOW */
+
+  const traceFlow = async () => {
+
+    const address =
+      a.trim();
+
+    if (!address) {
+
+      setError(
+        network === "bitcoin"
+          ? "Please enter a Bitcoin wallet address."
+          : "Please enter an Ethereum wallet address."
+      );
+
       return;
     }
 
@@ -2175,232 +2246,1350 @@ function FundFlow(){
     setError("");
     setR(null);
 
-    try{
-      const response=await fetch(
-        `${API}/api/fundflow/${encodeURIComponent(a.trim())}?network=bitcoin&hops=2`
-      );
+    try {
 
-      const data=await response.json();
+      const response =
+        await fetch(
+          `${API}/api/fundflow/${encodeURIComponent(
+            address
+          )}?network=${network}&hops=2`
+        );
 
-      if(!response.ok){
-        throw new Error(data.detail || "Fund-flow investigation failed");
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+
+        throw new Error(
+          data.detail ||
+          "Fund-flow investigation failed"
+        );
+
       }
 
       setR(data);
-    }catch(e:any){
-      setError(e.message || "Fund-flow investigation failed");
-    }finally{
+
+    } catch (e: any) {
+
+      setError(
+        e.message ||
+        "Fund-flow investigation failed"
+      );
+
+    } finally {
+
       setLoading(false);
+
     }
+
   };
 
-  const btc=(sats:number)=>{
-    return ((sats || 0)/100000000).toFixed(8)+" BTC";
+
+  /* BITCOIN AMOUNT */
+
+  const btc = (
+    sats: number
+  ) => {
+
+    return (
+      (
+        (Number(sats) || 0) /
+        100000000
+      ).toFixed(8) +
+      " BTC"
+    );
+
   };
+
+
+  /* ETH AMOUNT */
+
+  const eth = (
+    value: any
+  ) => {
+
+    if (
+      value === undefined ||
+      value === null ||
+      value === ""
+    ) {
+
+      return "0 ETH";
+
+    }
+
+    const numberValue =
+      Number(value);
+
+    if (
+      Number.isFinite(
+        numberValue
+      )
+    ) {
+
+      return (
+        numberValue.toLocaleString(
+          undefined,
+          {
+            maximumFractionDigits: 18
+          }
+        ) +
+        " ETH"
+      );
+
+    }
+
+    return (
+      String(value) +
+      " ETH"
+    );
+
+  };
+
+
+  /* GET FLOW EDGES */
+
+  const getFlowEdges = (): any[] => {
+
+    if (
+      Array.isArray(r?.edges) &&
+      r.edges.length > 0
+    ) {
+
+      return r.edges;
+
+    }
+
+    if (
+      Array.isArray(r?.edges_data) &&
+      r.edges_data.length > 0
+    ) {
+
+      return r.edges_data;
+
+    }
+
+    return [];
+
+  };
+
+
+  /* EDGE COUNT */
+
+  const getEdgeCount = () => {
+
+    const edges =
+      getFlowEdges();
+
+    const backendCount =
+      Number(
+        r?.edge_count || 0
+      );
+
+    return Math.max(
+      backendCount,
+      edges.length
+    );
+
+  };
+
+
+  /* TRANSACTION COUNT */
+
+  const getTransactionCount = () => {
+
+    const edges =
+      getFlowEdges();
+
+    const backendCount =
+      Number(
+        r?.transactions_scanned ||
+        r?.transactions ||
+        0
+      );
+
+    return Math.max(
+      backendCount,
+      edges.length
+    );
+
+  };
+
+
+  /* SHORT ADDRESS */
+
+  const shortAddress = (
+    value: any
+  ) => {
+
+    if (!value) {
+
+      return "Unknown";
+
+    }
+
+    const text =
+      String(value);
+
+    if (
+      text.length > 20
+    ) {
+
+      return (
+        text.slice(0, 12) +
+        "..." +
+        text.slice(-6)
+      );
+
+    }
+
+    return text;
+
+  };
+
+
+  /* SHORT TRANSACTION HASH */
+
+  const shortHash = (
+    value: any
+  ) => {
+
+    if (!value) {
+
+      return "Unknown";
+
+    }
+
+    const text =
+      String(value);
+
+    if (
+      text.length > 20
+    ) {
+
+      return (
+        text.slice(0, 16) +
+        "..."
+      );
+
+    }
+
+    return text;
+
+  };
+
+
+  /* TRANSACTION HASH */
+
+  const getTxHash = (
+    edge: any
+  ) => {
+
+    return (
+      edge?.transaction_hash ||
+      edge?.txid ||
+      edge?.hash ||
+      ""
+    );
+
+  };
+
+
+  /* TOKEN DETECTION */
+
+  const isTokenTransfer = (
+    edge: any
+  ) => {
+
+    return (
+      edge?.transfer_type === "token" ||
+      edge?.type === "token" ||
+      edge?.asset === "ERC-20" ||
+      !!edge?.token_address ||
+      !!edge?.contract_address
+    );
+
+  };
+
+
+  /* NATIVE TRANSFER DETECTION */
+
+  const isNativeTransfer = (
+    edge: any
+  ) => {
+
+    return (
+      edge?.transfer_type === "native" ||
+      edge?.type === "native" ||
+      edge?.asset === "ETH" ||
+      edge?.token_symbol === "ETH" ||
+      edge?.value_eth !== undefined
+    );
+
+  };
+
+
+  /* TOKEN LABEL */
+
+  const getTokenLabel = (
+    edge: any
+  ) => {
+
+    const symbol =
+      edge?.token_symbol;
+
+    const name =
+      edge?.token_name;
+
+    if (
+      symbol &&
+      String(symbol).toUpperCase() !== "UNKNOWN"
+    ) {
+
+      return String(symbol);
+
+    }
+
+    if (
+      name &&
+      String(name).toUpperCase() !== "UNKNOWN"
+    ) {
+
+      return String(name);
+
+    }
+
+    return "ERC-20";
+
+  };
+
+
+  /* TOKEN CONTRACT */
+
+  const getTokenContract = (
+    edge: any
+  ) => {
+
+    return (
+      edge?.token_address ||
+      edge?.contract_address ||
+      ""
+    );
+
+  };
+
+
+  /* ERC-20 AMOUNT */
+
+  const formatTokenAmount = (
+    edge: any
+  ) => {
+
+    const label =
+      getTokenLabel(edge);
+
+    const rawValue =
+      edge?.value_raw ??
+      edge?.value_token ??
+      edge?.value ??
+      null;
+
+    if (
+      rawValue === null ||
+      rawValue === undefined ||
+      rawValue === ""
+    ) {
+
+      return (
+        "ERC-20 " +
+        label
+      );
+
+    }
+
+
+    const decimalsRaw =
+      edge?.decimals;
+
+    const decimals =
+      Number(decimalsRaw);
+
+
+    /*
+     * If token metadata is unknown
+     * and decimals are 0, do not
+     * pretend that a huge raw value
+     * is a normal token amount.
+     */
+
+    const tokenIsUnknown =
+      label === "ERC-20";
+
+
+    if (
+      !tokenIsUnknown &&
+      Number.isInteger(decimals) &&
+      decimals >= 0 &&
+      decimals <= 36
+    ) {
+
+      const rawNumber =
+        Number(rawValue);
+
+      if (
+        Number.isFinite(rawNumber)
+      ) {
+
+        const divisor =
+          Math.pow(
+            10,
+            decimals
+          );
+
+        const tokenAmount =
+          rawNumber / divisor;
+
+        if (
+          Number.isFinite(tokenAmount)
+        ) {
+
+          return (
+            tokenAmount.toLocaleString(
+              undefined,
+              {
+                maximumFractionDigits: 8
+              }
+            ) +
+            " " +
+            label
+          );
+
+        }
+
+      }
+
+    }
+
+
+    /*
+     * Metadata is not reliable.
+     * Show the raw blockchain value
+     * explicitly instead of mislabelling it.
+     */
+
+    return (
+      "Raw: " +
+      String(rawValue) +
+      " " +
+      label
+    );
+
+  };
+
+
+  /* AMOUNT */
+
+  const formatAmount = (
+    edge: any
+  ) => {
+
+    /* BITCOIN */
+
+    if (
+      network === "bitcoin"
+    ) {
+
+      if (
+        edge?.value_sats !== undefined &&
+        edge?.value_sats !== null
+      ) {
+
+        return btc(
+          Number(
+            edge.value_sats
+          )
+        );
+
+      }
+
+      if (
+        edge?.value_btc !== undefined &&
+        edge?.value_btc !== null
+      ) {
+
+        const value =
+          Number(
+            edge.value_btc
+          );
+
+        if (
+          Number.isFinite(value)
+        ) {
+
+          return (
+            value.toLocaleString(
+              undefined,
+              {
+                maximumFractionDigits: 8
+              }
+            ) +
+            " BTC"
+          );
+
+        }
+
+      }
+
+      return "0 BTC";
+
+    }
+
+
+    /* ETHEREUM */
+
+    /*
+     * Check token first.
+     * This prevents ERC-20 transfers
+     * from being displayed as ETH.
+     */
+
+    if (
+      isTokenTransfer(edge)
+    ) {
+
+      return formatTokenAmount(
+        edge
+      );
+
+    }
+
+
+    /* NATIVE ETH */
+
+    if (
+      isNativeTransfer(edge)
+    ) {
+
+      if (
+        edge?.value_eth !== undefined &&
+        edge?.value_eth !== null
+      ) {
+
+        return eth(
+          edge.value_eth
+        );
+
+      }
+
+      return "0 ETH";
+
+    }
+
+
+    return "TRANSFER";
+
+  };
+
+
+  /* EDGE TYPE */
+
+  const getEdgeType = (
+    edge: any
+  ) => {
+
+    if (
+      isTokenTransfer(edge)
+    ) {
+
+      return (
+        "TOKEN • " +
+        getTokenLabel(edge)
+      );
+
+    }
+
+
+    if (
+      isNativeTransfer(edge)
+    ) {
+
+      return (
+        "NATIVE • " +
+        (
+          edge?.asset ||
+          "ETH"
+        )
+      );
+
+    }
+
+
+    const type =
+      edge?.type ||
+      edge?.transfer_type ||
+      edge?.transaction_type ||
+      edge?.asset_type ||
+      edge?.category;
+
+    if (type) {
+
+      const normalized =
+        String(type).toUpperCase();
+
+      if (
+        normalized !== "UNKNOWN"
+      ) {
+
+        return normalized;
+
+      }
+
+    }
+
+    return "TRANSFER";
+
+  };
+
+
+  /* ETHEREUM BLOCKSCOUT URL */
+
+  const getExplorerUrl = (
+    txHash: string
+  ) => {
+
+    if (
+      network !== "ethereum" ||
+      !txHash
+    ) {
+
+      return "";
+
+    }
+
+    return (
+      `https://eth.blockscout.com/tx/${txHash}`
+    );
+
+  };
+
+
+  /* FLOW EDGES */
+
+  const flowEdges =
+    getFlowEdges();
+
 
   return (
+
     <section className="panel">
-      <h2>Bitcoin Fund Flow Investigation</h2>
+
+      <h2>
+
+        {network === "bitcoin"
+          ? "Bitcoin Fund Flow Investigation"
+          : "Ethereum Fund Flow Investigation"}
+
+      </h2>
+
+
       <p>
-        Trace wallet relationships and transaction flows using live blockchain data.
+
+        Trace wallet relationships
+        and transaction flows
+        using live blockchain data.
+
       </p>
 
-      <div className="searchBox">
-        <input
-          value={a}
-          onChange={e=>setA(e.target.value)}
-          onKeyDown={e=>{
-            if(e.key==="Enter") traceFlow();
-          }}
-          placeholder="Enter Bitcoin wallet address"
-        />
+
+      {/* NETWORK */}
+
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          marginBottom: "14px"
+        }}
+      >
 
         <button
-          className="primary"
-          onClick={traceFlow}
-          disabled={loading}
+
+          className={
+            network === "bitcoin"
+              ? "primary"
+              : "nav"
+          }
+
+          onClick={() => {
+
+            setNetwork("bitcoin");
+            setA("");
+            setR(null);
+            setError("");
+
+          }}
+
         >
-          {loading ? "Tracing..." : "Trace Flow"}
+
+          Bitcoin
+
         </button>
+
+
+        <button
+
+          className={
+            network === "ethereum"
+              ? "primary"
+              : "nav"
+          }
+
+          onClick={() => {
+
+            setNetwork("ethereum");
+            setA("");
+            setR(null);
+            setError("");
+
+          }}
+
+        >
+
+          Ethereum
+
+        </button>
+
       </div>
 
-      {error && <div className="empty">{error}</div>}
+
+      {/* SEARCH */}
+
+      <div className="searchBox">
+
+        <input
+
+          value={a}
+
+          onChange={(e) =>
+            setA(
+              e.target.value
+            )
+          }
+
+          onKeyDown={(e) => {
+
+            if (
+              e.key === "Enter"
+            ) {
+
+              traceFlow();
+
+            }
+
+          }}
+
+          placeholder={
+            network === "bitcoin"
+              ? "Enter Bitcoin wallet address"
+              : "Enter Ethereum wallet address"
+          }
+
+        />
+
+
+        <button
+
+          className="primary"
+
+          onClick={traceFlow}
+
+          disabled={loading}
+
+        >
+
+          {loading
+            ? "Tracing..."
+            : "Trace Flow"}
+
+        </button>
+
+      </div>
+
+
+      {/* ERROR */}
+
+      {error && (
+
+        <div className="empty">
+
+          {error}
+
+        </div>
+
+      )}
+
+
+      {/* RESULTS */}
 
       {r && (
+
         <>
+
+          {/* SUMMARY */}
+
           <div className="cards">
+
             <Card
+
               title="NETWORK"
-              value={r.network || "Bitcoin"}
+
+              value={
+                r.network ||
+                (
+                  network === "bitcoin"
+                    ? "Bitcoin"
+                    : "Ethereum"
+                )
+              }
+
               sub="Blockchain"
+
             />
 
+
             <Card
+
               title="WALLETS"
-              value={String(r.wallet_count || r.nodes?.length || 0)}
+
+              value={String(
+                r.wallet_count ??
+                r.nodes?.length ??
+                0
+              )}
+
               sub="Wallets identified"
+
             />
 
+
             <Card
+
               title="EDGES"
-              value={String(r.edge_count || r.edges?.length || 0)}
+
+              value={String(
+                getEdgeCount()
+              )}
+
               sub="Fund-flow relationships"
+
             />
 
+
             <Card
+
               title="TRANSACTIONS"
-              value={String(r.transactions_scanned || 0)}
+
+              value={String(
+                getTransactionCount()
+              )}
+
               sub="Transactions scanned"
+
             />
+
           </div>
 
+
+          {/* INVESTIGATION SUMMARY */}
+
           <section className="panel">
-            <h2>Investigation Summary</h2>
+
+            <h2>
+              Investigation Summary
+            </h2>
+
 
             <div className="row">
-              <b>Root Wallet</b>
-              <span>{r.root}</span>
-            </div>
 
-            <div className="row">
-              <b>Status</b>
-              <span className="liveDot">
-                ● {r.status || "LIVE"}
+              <b>
+                Root Wallet
+              </b>
+
+              <span
+                style={{
+                  fontFamily: "monospace",
+                  wordBreak: "break-all"
+                }}
+              >
+
+                {r.root ||
+                  r.root_wallet ||
+                  a}
+
               </span>
+
             </div>
 
-            <div className="row">
-              <b>Hops Requested</b>
-              <span>{r.hops_requested ?? "—"}</span>
-            </div>
 
             <div className="row">
-              <b>Hops Traced</b>
-              <span>{r.hops_traced ?? "—"}</span>
+
+              <b>
+                Status
+              </b>
+
+              <span className="liveDot">
+
+                ● {r.status || "LIVE"}
+
+              </span>
+
             </div>
 
+
             <div className="row">
-              <b>Data Source</b>
-              <span>{r.source || "Blockchain API"}</span>
+
+              <b>
+                Hops Requested
+              </b>
+
+              <span>
+
+                {r.hops_requested ?? "—"}
+
+              </span>
+
             </div>
+
+
+            <div className="row">
+
+              <b>
+                Hops Traced
+              </b>
+
+              <span>
+
+                {r.hops_traced ?? "—"}
+
+              </span>
+
+            </div>
+
+
+            <div className="row">
+
+              <b>
+                Data Source
+              </b>
+
+              <span>
+
+                {r.source ||
+                  "Blockchain API"}
+
+              </span>
+
+            </div>
+
           </section>
+
+
+          {/* GRAPH */}
+
           <FundFlowGraph
-  nodes={r.nodes || []}
-  edges={r.edges || []}
-/>
+
+            nodes={
+              r.nodes || []
+            }
+
+            edges={
+              Array.isArray(r.edges)
+                ? r.edges
+                : []
+            }
+
+            edges_data={
+              Array.isArray(r.edges_data)
+                ? r.edges_data
+                : []
+            }
+
+          />
+
+
+          {/* TRANSACTIONS */}
 
           <section className="panel">
-            <h2>Fund Flow Transactions</h2>
 
-            {r.edges?.length ? (
+            <h2>
+              Fund Flow Transactions
+            </h2>
+
+
+            {flowEdges.length > 0 ? (
+
               <div className="table">
 
                 <div className="thead">
-                  <span>Source</span>
-                  <span>Target</span>
-                  <span>Amount</span>
-                  <span>Type</span>
-                  <span>TXID</span>
-                  <span>Hop</span>
+
+                  <span>
+                    Source
+                  </span>
+
+                  <span>
+                    Target
+                  </span>
+
+                  <span>
+                    Amount
+                  </span>
+
+                  <span>
+                    Type
+                  </span>
+
+                  <span>
+                    TXID
+                  </span>
+
+                  <span>
+                    Hop
+                  </span>
+
                 </div>
 
-                {r.edges.slice(0,50).map(
-                  (edge:any,i:number)=>(
-                    <div className="tr" key={`${edge.txid}-${i}`}>
 
-                      <span>
-                        {edge.source
-                          ? edge.source.slice(0,12)+"..."
-                          : "Unknown"}
-                      </span>
+                {flowEdges
+                  .slice(0, 50)
+                  .map(
+                    (
+                      edge: any,
+                      i: number
+                    ) => {
 
-                      <span>
-                        {edge.target
-                          ? edge.target.slice(0,12)+"..."
-                          : "Unknown"}
-                      </span>
+                      const txHash =
+                        getTxHash(edge);
 
-                      <span>
-                        {btc(edge.value_sats)}
-                      </span>
+                      const explorerUrl =
+                        getExplorerUrl(
+                          txHash
+                        );
 
-                      <span className={
-                        edge.type==="incoming"
-                          ? "up"
-                          : "down"
-                      }>
-                        {edge.type?.toUpperCase() || "UNKNOWN"}
-                      </span>
 
-                      <span title={edge.txid}>
-                        {edge.txid
-                          ? edge.txid.slice(0,16)+"..."
-                          : "Unknown"}
-                      </span>
+                      return (
 
-                      <span>
-                        {edge.hop ?? "—"}
-                      </span>
+                        <div
 
-                    </div>
-                  )
-                )}
+                          className="tr"
+
+                          key={
+                            `${txHash || i}-${i}`
+                          }
+
+                        >
+
+                          {/* SOURCE */}
+
+                          <span
+
+                            title={
+                              edge.source ||
+                              ""
+                            }
+
+                            style={{
+                              fontFamily:
+                                "monospace"
+                            }}
+
+                          >
+
+                            {shortAddress(
+                              edge.source
+                            )}
+
+                          </span>
+
+
+                          {/* TARGET */}
+
+                          <span
+
+                            title={
+                              edge.target ||
+                              ""
+                            }
+
+                            style={{
+                              fontFamily:
+                                "monospace"
+                            }}
+
+                          >
+
+                            {shortAddress(
+                              edge.target
+                            )}
+
+                          </span>
+
+
+                          {/* AMOUNT */}
+
+                          <span
+
+                            title={
+                              isTokenTransfer(
+                                edge
+                              )
+                                ? (
+                                    getTokenContract(
+                                      edge
+                                    )
+                                      ? `Token Contract: ${getTokenContract(edge)}`
+                                      : "ERC-20 token contract unavailable"
+                                  )
+                                : ""
+                            }
+
+                          >
+
+                            {formatAmount(
+                              edge
+                            )}
+
+                          </span>
+
+
+                          {/* TYPE */}
+
+                          <span
+
+                            className={
+                              String(
+                                edge.direction ||
+                                ""
+                              ).toUpperCase() ===
+                              "INCOMING"
+                                ? "up"
+                                : String(
+                                    edge.direction ||
+                                    ""
+                                  ).toUpperCase() ===
+                                  "OUTGOING"
+                                ? "down"
+                                : ""
+                            }
+
+                          >
+
+                            {getEdgeType(
+                              edge
+                            )}
+
+                          </span>
+
+
+                          {/* TXID */}
+
+                          <span
+
+                            title={
+                              txHash ||
+                              "No transaction hash"
+                            }
+
+                            style={{
+                              fontFamily:
+                                "monospace",
+                              wordBreak:
+                                "break-all"
+                            }}
+
+                          >
+
+                            {txHash ? (
+
+                              explorerUrl ? (
+
+                                <a
+
+                                  href={
+                                    explorerUrl
+                                  }
+
+                                  target="_blank"
+
+                                  rel="noopener noreferrer"
+
+                                >
+
+                                  {shortHash(
+                                    txHash
+                                  )}
+
+                                </a>
+
+                              ) : (
+
+                                shortHash(
+                                  txHash
+                                )
+
+                              )
+
+                            ) : (
+
+                              "Unknown"
+
+                            )}
+
+                          </span>
+
+
+                          {/* HOP */}
+
+                          <span>
+
+                            {edge.hop ?? "—"}
+
+                          </span>
+
+                        </div>
+
+                      );
+
+                    }
+                  )}
 
               </div>
+
             ) : (
+
               <div className="empty">
-                No fund-flow transactions found.
+
+                No fund-flow
+                transactions found.
+
               </div>
+
             )}
+
           </section>
 
-          <section className="panel">
-            <h2>Wallet Network</h2>
 
-            {r.nodes?.length ? (
+          {/* WALLET NETWORK */}
+
+          <section className="panel">
+
+            <h2>
+              Wallet Network
+            </h2>
+
+
+            {Array.isArray(r.nodes) &&
+            r.nodes.length > 0 ? (
+
               <div className="table">
 
                 <div className="thead">
-                  <span>Wallet</span>
-                  <span>Type</span>
-                  <span>Hop</span>
+
+                  <span>
+                    Wallet
+                  </span>
+
+                  <span>
+                    Type
+                  </span>
+
+                  <span>
+                    Hop
+                  </span>
+
                 </div>
 
-                {r.nodes.slice(0,50).map(
-                  (node:any,i:number)=>(
-                    <div className="tr" key={node.id || i}>
 
-                      <span title={node.id}>
-                        {node.label ||
-                          (node.id
-                            ? node.id.slice(0,18)+"..."
-                            : "Unknown")}
-                      </span>
+                {r.nodes
+                  .slice(0, 50)
+                  .map(
+                    (
+                      node: any,
+                      i: number
+                    ) => (
 
-                      <span>
-                        {node.type || "wallet"}
-                      </span>
+                      <div
 
-                      <span>
-                        {node.hop ?? "—"}
-                      </span>
+                        className="tr"
 
-                    </div>
-                  )
-                )}
+                        key={
+                          node.id || i
+                        }
+
+                      >
+
+                        <span
+
+                          title={
+                            node.id || ""
+                          }
+
+                          style={{
+                            fontFamily:
+                              "monospace"
+                          }}
+
+                        >
+
+                          {node.label ||
+                            shortAddress(
+                              node.id
+                            )}
+
+                        </span>
+
+
+                        <span>
+
+                          {node.type ||
+                            "wallet"}
+
+                        </span>
+
+
+                        <span>
+
+                          {node.hop ?? "—"}
+
+                        </span>
+
+                      </div>
+
+                    )
+                  )}
 
               </div>
+
             ) : (
+
               <div className="empty">
+
                 No wallet nodes found.
+
               </div>
+
             )}
+
           </section>
+
         </>
+
       )}
+
     </section>
+
   );
+
 }
+
 function Blockchain(){
 
   // =====================================================
