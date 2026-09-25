@@ -848,6 +848,7 @@ function WalletSearch() {
   const [error, setError] = useState("");
   const [nextPageParams, setNextPageParams] = useState<any>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [bitcoinPage, setBitcoinPage] = useState(1);
 
   const investigate = async () => {
     const value = address.trim();
@@ -867,11 +868,12 @@ function WalletSearch() {
     setTransactions([]);
     setTokens([]);
     setNextPageParams(null);
+    setBitcoinPage(1);
 
     try {
       if (network === "bitcoin") {
         const response = await fetch(
-          `${API}/api/wallets/${encodeURIComponent(value)}?network=bitcoin`
+          `${API}/api/wallets/${encodeURIComponent(value)}?network=bitcoin&page=1&limit=100`
         );
 
         const data = await response.json();
@@ -1017,7 +1019,56 @@ function WalletSearch() {
     }
   };
 
+    const loadBitcoinPage = async (page: number) => {
+    if (
+      network !== "bitcoin" ||
+      !address.trim() ||
+      loading
+    ) {
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch(
+        `${API}/api/wallets/${encodeURIComponent(
+          address.trim()
+        )}?network=bitcoin&page=${page}&limit=100`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail ||
+          "Bitcoin wallet lookup failed."
+        );
+      }
+
+      setWallet({
+        type: "bitcoin",
+        raw: data
+      });
+
+      setTransactions(
+        data.transactions || []
+      );
+
+      setBitcoinPage(page);
+
+    } catch (e: any) {
+      setError(
+        e.message ||
+        "Bitcoin wallet lookup failed."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
   const btc = (sats: number) => {
+  
     return (
       ((sats || 0) / 100000000).toFixed(8) +
       " BTC"
@@ -1255,99 +1306,145 @@ function WalletSearch() {
 
             {transactions.length ? (
 
-              <div className="table">
+  <>
 
-                <div className="thead">
-                  <span>Transaction</span>
-                  <span>Status</span>
-                  <span>Block</span>
-                  <span>Timestamp</span>
-                </div>
+    <div className="table">
 
-                {transactions
-                  .slice(0, 20)
-                  .map(
-                    (tx: any, i: number) => {
+      <div className="thead">
+        <span>Transaction</span>
+        <span>Status</span>
+        <span>Block</span>
+        <span>Timestamp</span>
+      </div>
 
-                      const txHash =
-                        tx.hash ||
-                        tx.txid ||
-                        "";
-                        
-                      const blockHeight =
-                        tx.block_height ??
-                        tx.status?.block_height ??
-                        null;
+      {transactions.map(
+        (tx: any, i: number) => {
 
-                      const blockTime =
-                        tx.time ??
-                        tx.block_time ??
-                        tx.status?.block_time ??
-                        null;
+          const txHash =
+            tx.hash ||
+            tx.txid ||
+            "";
 
-                      const confirmed =
-                        blockHeight !== null ||
-                        tx.confirmed === true ||
-                        tx.status?.confirmed === true;
+          const blockHeight =
+            tx.block_height ??
+            tx.status?.block_height ??
+            null;
 
-                      return (
-                        <div
-                          className="tr"
-                          key={
-                            txHash || i
-                          }
-                        >
+          const blockTime =
+            tx.time ??
+            tx.block_time ??
+            tx.status?.block_time ??
+            null;
 
-                          <span
-                            title={txHash}
-                            style={{
-                              fontFamily:
-                                "monospace"
-                            }}
-                          >
-                            {txHash
-                              ? txHash.slice(
-                                  0,
-                                  16
-                                ) + "..."
-                              : "Unknown"}
-                          </span>
+          const confirmed =
+            blockHeight !== null ||
+            tx.confirmed === true ||
+            tx.status?.confirmed === true;
 
-                          <span className="liveDot">
-                            ●{" "}
-                            {confirmed
-                              ? "CONFIRMED"
-                              : "UNCONFIRMED"}
-                          </span>
+          return (
+            <div
+              className="tr"
+              key={txHash || i}
+            >
 
-                          <span>
-                            {blockHeight !== null
-                              ? blockHeight
-                              : "Pending"}
-                          </span>
+              <span
+                title={txHash}
+                style={{
+                  fontFamily: "monospace"
+                }}
+              >
+                {txHash
+                  ? txHash.slice(0, 16) + "..."
+                  : "Unknown"}
+              </span>
 
-                          <span>
-                            {blockTime
-                              ? new Date(
-                                  blockTime * 1000
-                                ).toLocaleString()
-                              : "Unknown"}
-                          </span>
+              <span className="liveDot">
+                ●{" "}
+                {confirmed
+                  ? "CONFIRMED"
+                  : "UNCONFIRMED"}
+              </span>
 
-                        </div>
-                      );
-                    }
-                  )}
+              <span>
+                {blockHeight !== null
+                  ? blockHeight
+                  : "Pending"}
+              </span>
 
-              </div>
+              <span>
+                {blockTime
+                  ? new Date(
+                      blockTime * 1000
+                    ).toLocaleString()
+                  : "Unknown"}
+              </span>
 
-            ) : (
+            </div>
+          );
+        }
+      )}
 
-              <div className="empty">
-                No Bitcoin transactions found.
-              </div>
+    </div>
 
-            )}
+    {/* BITCOIN PAGINATION */}
+
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        gap: "12px",
+        marginTop: "16px"
+      }}
+    >
+
+      <button
+        className="nav"
+        onClick={() =>
+          loadBitcoinPage(bitcoinPage - 1)
+        }
+        disabled={
+          bitcoinPage === 1 ||
+          loading
+        }
+      >
+        Previous
+      </button>
+
+      <span>
+        Page {bitcoinPage} of{" "}
+        {Math.ceil(
+          (wallet?.raw?.pagination?.total || 0) / 100
+        )}
+      </span>
+
+      <button
+        className="primary"
+        onClick={() =>
+          loadBitcoinPage(bitcoinPage + 1)
+        }
+        disabled={
+          loading ||
+          bitcoinPage >=
+            Math.ceil(
+              (wallet?.raw?.pagination?.total || 0) / 100
+            )
+        }
+      >
+        Next
+      </button>
+
+    </div>
+
+  </>
+
+) : (
+
+  <div className="empty">
+    No Bitcoin transactions found.
+  </div>
+
+)}
 
           </section>
 

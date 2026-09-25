@@ -9,7 +9,9 @@ BITCOIN_API = "https://blockchain.info"
 @router.get("/{address}")
 async def wallet(
     address: str,
-    network: str = Query("bitcoin")
+    network: str = Query("bitcoin"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(100, ge=1, le=100)
 ):
     if network.lower() != "bitcoin":
         raise HTTPException(
@@ -27,8 +29,14 @@ async def wallet(
     try:
         async with httpx.AsyncClient(timeout=20) as client:
 
+            offset = (page - 1) * limit
+
             response = await client.get(
-                f"{BITCOIN_API}/rawaddr/{address}"
+                f"{BITCOIN_API}/rawaddr/{address}",
+                params={
+                     "limit": limit,
+                     "offset": offset
+                }
             )
 
         if response.status_code == 404:
@@ -104,6 +112,14 @@ async def wallet(
             },
 
             "transactions": transactions,
+
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "offset": offset,
+                "total": transaction_count,
+                "has_more": offset + len(transactions) < transaction_count
+            },
 
             "source": "Blockchain.com Blockchain Data API"
         }
