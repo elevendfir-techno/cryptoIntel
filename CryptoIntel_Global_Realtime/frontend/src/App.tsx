@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const API = "http://127.0.0.1:8888";
+const API = "https://cryptointel-backend-fx16.onrender.com";
 type Market = {symbol:string; exchange:string; price:number; volume:number; change24h:number; timestamp:string};
 type Alert = {type:string; severity:string; message:string; timestamp:string};
 
@@ -52,52 +52,97 @@ export default function App(){
 },[]);
   useEffect(() => {
 
-  const loadDetections = async () => {
+  const loadDetectionAndAlerts = async () => {
 
     try {
 
-      const response = await fetch(
+      // ============================
+      // LIVE DETECTIONS
+      // ============================
+
+      const detectionResponse = await fetch(
         `${API}/api/detection`
       );
 
-      const data = await response.json();
+      const detectionData =
+        await detectionResponse.json();
 
-      if (response.ok) {
+      if (detectionResponse.ok) {
 
         setLiveDetectionCount(
-          data.total_detections || 0
+          detectionData.total_detections || 0
         );
 
-        const detectionAlerts = (
-          data.detections || []
-        ).map((d: any) => ({
-          type: d.type || "DETECTION",
-          severity: d.severity || "UNKNOWN",
+      }
+
+
+      // ============================
+      // REAL ALERT ENGINE
+      // ============================
+
+      const alertResponse = await fetch(
+        `${API}/api/alerts`
+      );
+
+      const alertData =
+        await alertResponse.json();
+
+      if (alertResponse.ok) {
+
+        const realAlerts = (
+          Array.isArray(alertData)
+            ? alertData
+            : alertData.alerts || []
+        ).map((a: any) => ({
+
+          type:
+            a.detection_type ||
+            a.alert_type ||
+            a.type ||
+            "RISK ALERT",
+
+          severity:
+            a.severity ||
+            a.risk_level ||
+            "UNKNOWN",
+
           message:
-            d.reason ||
-            d.message ||
-            "Detection event generated",
+            a.reason ||
+            a.message ||
+            "Risk alert generated",
+
           timestamp:
-            d.timestamp ||
+            a.created_at ||
+            a.timestamp ||
             new Date().toISOString()
+
         }));
 
-        setAlerts(detectionAlerts);
+        setAlerts(realAlerts);
+
       }
 
     } catch {
-      // Keep previous detection data if API is temporarily unavailable
+
+      // Keep previous live data if API
+      // is temporarily unavailable
+
     }
+
   };
 
-  loadDetections();
+
+  loadDetectionAndAlerts();
+
 
   const interval = setInterval(
-    loadDetections,
+    loadDetectionAndAlerts,
     10000
   );
 
-  return () => clearInterval(interval);
+
+  return () =>
+    clearInterval(interval);
 
 }, []);
 
@@ -454,6 +499,7 @@ function Detection({
 
   const loadDetections = async () => {
     try {
+
       setError("");
 
       const response = await fetch(
@@ -464,7 +510,8 @@ function Detection({
 
       if (!response.ok) {
         throw new Error(
-          data.detail || "Detection API unavailable"
+          data.detail ||
+          "Detection API unavailable"
         );
       }
 
@@ -475,7 +522,8 @@ function Detection({
     } catch (e: any) {
 
       setError(
-        e.message || "Detection API unavailable"
+        e.message ||
+        "Detection API unavailable"
       );
 
     } finally {
@@ -484,6 +532,7 @@ function Detection({
 
     }
   };
+
 
   useEffect(() => {
 
@@ -494,24 +543,120 @@ function Detection({
       10000
     );
 
-    return () => clearInterval(interval);
+    return () =>
+      clearInterval(interval);
 
   }, []);
 
-  const high = detections.filter(
-    d => d.severity === "HIGH"
-  ).length;
 
-  const medium = detections.filter(
-    d => d.severity === "MEDIUM"
-  ).length;
+  /* =====================================================
+     SEVERITY COUNTS
+  ===================================================== */
 
-  const low = detections.filter(
-    d => d.severity === "LOW"
-  ).length;
+  const high =
+    detections.filter(
+      d =>
+        String(d.severity || "")
+          .toUpperCase() === "HIGH"
+    ).length;
+
+  const medium =
+    detections.filter(
+      d =>
+        String(d.severity || "")
+          .toUpperCase() === "MEDIUM"
+    ).length;
+
+  const low =
+    detections.filter(
+      d =>
+        String(d.severity || "")
+          .toUpperCase() === "LOW"
+    ).length;
+
+
+  /* =====================================================
+     FUND FLOW DETECTION
+  ===================================================== */
+
+  const isFundFlowDetection = (
+    d: any
+  ) => {
+
+    return (
+      d?.type ===
+      "MULTI_HOP_FUND_FLOW"
+    );
+
+  };
+
+
+  /* =====================================================
+     SHORT ADDRESS
+  ===================================================== */
+
+  const shortAddress = (
+    value: any
+  ) => {
+
+    if (!value) {
+      return "—";
+    }
+
+    const text =
+      String(value);
+
+    if (text.length <= 22) {
+      return text;
+    }
+
+    return (
+      text.slice(0, 12) +
+      "..." +
+      text.slice(-6)
+    );
+
+  };
+
+
+  /* =====================================================
+     DETECTION DETAILS
+  ===================================================== */
+
+  const getDetectionDetails = (
+    d: any
+  ) => {
+
+    if (
+      isFundFlowDetection(d)
+    ) {
+
+      return (
+        `Multi-hop fund flow: ` +
+        `${d.hops ?? "—"} hops, ` +
+        `${d.wallet_count ?? "—"} wallets, ` +
+        `${d.edge_count ?? "—"} connections, ` +
+        `${d.transactions_scanned ?? "—"} transactions`
+      );
+
+    }
+
+    return (
+      d.reason ||
+      d.message ||
+      "Detection event generated"
+    );
+
+  };
+
 
   return (
     <>
+
+      {/* =================================================
+          DETECTION HEADER
+      ================================================= */}
+
       <section className="panel hero">
 
         <h2>
@@ -520,26 +665,34 @@ function Detection({
 
         <p>
           Real-time rule-based detection using
-          live cryptocurrency market feeds and
-          Bitcoin blockchain data.
+          live cryptocurrency market feeds,
+          blockchain activity and fund-flow analysis.
         </p>
 
-        <div style={{
-          marginTop: "12px",
-          fontSize: "12px",
-          color: "#777"
-        }}>
+        <div
+          style={{
+            marginTop: "12px",
+            fontSize: "12px",
+            color: "#777"
+          }}
+        >
           ● LIVE DETECTION ENGINE
         </div>
 
       </section>
 
 
+      {/* =================================================
+          DETECTION SUMMARY
+      ================================================= */}
+
       <section className="cards">
 
         <Card
           title="TOTAL DETECTIONS"
-          value={String(detections.length)}
+          value={String(
+            detections.length
+          )}
           sub="Live indicators"
         />
 
@@ -564,6 +717,10 @@ function Detection({
       </section>
 
 
+      {/* =================================================
+          DETECTION RULES
+      ================================================= */}
+
       <section className="panel">
 
         <h2>
@@ -571,77 +728,129 @@ function Detection({
         </h2>
 
         <div className="row">
-          <b>PRICE ANOMALY</b>
+
+          <b>
+            PRICE ANOMALY
+          </b>
+
           <span>
             Large 24H price movement
           </span>
+
           <small>
             ACTIVE
           </small>
+
         </div>
 
+
         <div className="row">
-          <b>VOLUME SPIKE</b>
+
+          <b>
+            VOLUME SPIKE
+          </b>
+
           <span>
             Unusually high trading volume
           </span>
+
           <small>
             ACTIVE
           </small>
+
         </div>
 
+
         <div className="row">
-          <b>RAPID ACTIVITY</b>
+
+          <b>
+            RAPID ACTIVITY
+          </b>
+
           <span>
             High-frequency market activity
           </span>
+
           <small>
             ACTIVE
           </small>
+
         </div>
 
+
         <div className="row">
-          <b>EXCHANGE SPREAD</b>
+
+          <b>
+            EXCHANGE SPREAD
+          </b>
+
           <span>
             Unusual price difference between exchanges
           </span>
+
           <small>
             ACTIVE
           </small>
+
         </div>
 
+
         <div className="row">
-          <b>LARGE TRANSFER</b>
+
+          <b>
+            LARGE TRANSFER
+          </b>
+
           <span>
             Large Bitcoin transaction output
           </span>
+
           <small>
             ACTIVE
           </small>
+
         </div>
 
+
         <div className="row">
-          <b>HIGH VALUE TRANSACTION</b>
+
+          <b>
+            HIGH VALUE TRANSACTION
+          </b>
+
           <span>
             Very large aggregate Bitcoin output value
           </span>
+
           <small>
             ACTIVE
           </small>
+
         </div>
 
+
         <div className="row">
-          <b>MULTI-HOP MOVEMENT</b>
+
+          <b>
+            MULTI-HOP MOVEMENT
+          </b>
+
           <span>
-            Wallet relationship tracing
+            Wallet relationship tracing across blockchain transactions
           </span>
+
           <small>
-            BLOCKCHAIN ANALYSIS
+            ACTIVE
           </small>
+
         </div>
 
       </section>
 
+
+      {/* =================================================
+          LIVE DETECTION RESULTS
+      ================================================= */}
 
       <section className="panel">
 
@@ -649,78 +858,158 @@ function Detection({
           Live Detection Results
         </h2>
 
+
         {loading && (
+
           <div className="empty">
             Loading live blockchain and market detections...
           </div>
+
         )}
 
+
         {error && (
+
           <div className="empty">
             {error}
           </div>
+
         )}
 
-        {!loading && !error && detections.length === 0 && (
+
+        {!loading &&
+          !error &&
+          detections.length === 0 && (
+
           <div className="empty">
             No detection events currently meet the configured thresholds.
           </div>
+
         )}
 
-        {!loading && !error && detections.length > 0 && (
+
+        {!loading &&
+          !error &&
+          detections.length > 0 && (
 
           <div className="table">
 
             <div className="thead">
-              <span>Type</span>
-              <span>Severity</span>
-              <span>Asset</span>
-              <span>Value</span>
-              <span>Source</span>
-              <span>Details</span>
+
+              <span>
+                Type
+              </span>
+
+              <span>
+                Severity
+              </span>
+
+              <span>
+                Network
+              </span>
+
+              <span>
+                Asset / Root
+              </span>
+
+              <span>
+                Source
+              </span>
+
+              <span>
+                Details
+              </span>
+
             </div>
 
 
             {detections.map(
-              (d: any, i: number) => (
+              (
+                d: any,
+                i: number
+              ) => {
 
-                <div
-                  className="tr"
-                  key={`${d.txid || d.type}-${i}`}
-                >
+                const fundFlow =
+                  isFundFlowDetection(d);
 
-                  <b>
-                    {d.type || "UNKNOWN"}
-                  </b>
+                return (
 
+                  <div
+                    className="tr"
+                    key={
+                      `${d.txid || d.type}-${i}`
+                    }
+                  >
 
-                  <span>
-                    {d.severity || "UNKNOWN"}
-                  </span>
-
-
-                  <span>
-                    {d.asset || "—"}
-                  </span>
-
-
-                  <span>
-                    {d.value || "—"}
-                  </span>
+                    <b>
+                      {d.type ||
+                        "UNKNOWN"}
+                    </b>
 
 
-                  <span>
-                    {d.source || "—"}
-                  </span>
+                    <span>
+                      {d.severity ||
+                        "UNKNOWN"}
+                    </span>
 
 
-                  <span>
-                    {d.reason || "—"}
-                  </span>
+                    <span>
+                      {d.network ||
+                        "—"}
+                    </span>
 
-                </div>
 
-              )
+                    <span
+                      title={
+                        fundFlow
+                          ? (
+                              d.root_wallet ||
+                              d.address ||
+                              ""
+                            )
+                          : ""
+                      }
+                      style={
+                        fundFlow
+                          ? {
+                              fontFamily:
+                                "monospace"
+                            }
+                          : {}
+                      }
+                    >
+
+                      {fundFlow
+                        ? shortAddress(
+                            d.root_wallet ||
+                            d.address
+                          )
+                        : (
+                            d.asset ||
+                            "—"
+                          )}
+
+                    </span>
+
+
+                    <span>
+                      {d.source ||
+                        d.data_source ||
+                        "—"}
+                    </span>
+
+
+                    <span>
+                      {getDetectionDetails(
+                        d
+                      )}
+                    </span>
+
+                  </div>
+
+                );
+
+              }
             )}
 
           </div>
@@ -730,9 +1019,195 @@ function Detection({
       </section>
 
 
+      {/* =================================================
+          FUND FLOW EVIDENCE
+      ================================================= */}
+
       {!loading &&
         !error &&
-        detections.some(d => d.txid) && (
+        detections.some(
+          d =>
+            isFundFlowDetection(d)
+        ) && (
+
+        <section className="panel">
+
+          <h2>
+            Fund Flow Detection Evidence
+          </h2>
+
+          <p>
+            Multi-hop fund-flow detections generated
+            from completed live wallet relationship analysis.
+          </p>
+
+
+          <div className="table">
+
+            <div className="thead">
+
+              <span>
+                Network
+              </span>
+
+              <span>
+                Root Wallet
+              </span>
+
+              <span>
+                Hops
+              </span>
+
+              <span>
+                Wallets
+              </span>
+
+              <span>
+                Connections
+              </span>
+
+              <span>
+                Transactions
+              </span>
+
+            </div>
+
+
+            {detections
+              .filter(
+                d =>
+                  isFundFlowDetection(d)
+              )
+              .map(
+                (
+                  d: any,
+                  i: number
+                ) => (
+
+                  <div
+                    className="tr"
+                    key={
+                      `fundflow-${i}-${d.root_wallet || d.address || "unknown"}`
+                    }
+                  >
+
+                    <span>
+                      {d.network ||
+                        "Unknown"}
+                    </span>
+
+
+                    <span
+                      title={
+                        d.root_wallet ||
+                        d.address ||
+                        ""
+                      }
+                      style={{
+                        fontFamily:
+                          "monospace",
+                        wordBreak:
+                          "break-all"
+                      }}
+                    >
+
+                      {shortAddress(
+                        d.root_wallet ||
+                        d.address
+                      )}
+
+                    </span>
+
+
+                    <span>
+                      {d.hops ??
+                        "—"}
+                    </span>
+
+
+                    <span>
+                      {d.wallet_count ??
+                        "—"}
+                    </span>
+
+
+                    <span>
+                      {d.edge_count ??
+                        "—"}
+                    </span>
+
+
+                    <span>
+                      {d.transactions_scanned ??
+                        "—"}
+                    </span>
+
+                  </div>
+
+                )
+              )}
+
+          </div>
+
+
+          {/* FUND FLOW MESSAGE */}
+
+          {detections
+            .filter(
+              d =>
+                isFundFlowDetection(d)
+            )
+            .slice(0, 10)
+            .map(
+              (
+                d: any,
+                i: number
+              ) => (
+
+                <div
+                  className="row"
+                  key={
+                    `fundflow-message-${i}`
+                  }
+                  style={{
+                    marginTop: "8px"
+                  }}
+                >
+
+                  <b>
+                    Detection
+                  </b>
+
+                  <span>
+                    {d.message ||
+                      "Multi-hop fund-flow activity detected."}
+                  </span>
+
+                  <small>
+                    {d.status ||
+                      "LIVE"}
+                  </small>
+
+                </div>
+
+              )
+            )}
+
+        </section>
+
+      )}
+
+
+      {/* =================================================
+          BLOCKCHAIN DETECTION EVIDENCE
+      ================================================= */}
+
+      {!loading &&
+        !error &&
+        detections.some(
+          d =>
+            d.txid
+        ) && (
 
         <section className="panel">
 
@@ -743,23 +1218,50 @@ function Detection({
           <div className="table">
 
             <div className="thead">
-              <span>Detection</span>
-              <span>BTC Value</span>
-              <span>TXID</span>
-              <span>Block</span>
-              <span>Network</span>
-              <span>Source</span>
+
+              <span>
+                Detection
+              </span>
+
+              <span>
+                BTC Value
+              </span>
+
+              <span>
+                TXID
+              </span>
+
+              <span>
+                Block
+              </span>
+
+              <span>
+                Network
+              </span>
+
+              <span>
+                Source
+              </span>
+
             </div>
 
 
             {detections
-              .filter(d => d.txid)
+              .filter(
+                d =>
+                  d.txid
+              )
               .map(
-                (d: any, i: number) => (
+                (
+                  d: any,
+                  i: number
+                ) => (
 
                   <div
                     className="tr"
-                    key={`blockchain-${d.txid}-${i}`}
+                    key={
+                      `blockchain-${d.txid}-${i}`
+                    }
                   >
 
                     <b>
@@ -768,46 +1270,63 @@ function Detection({
 
 
                     <span>
-                      {d.value || "—"}
+                      {d.value ||
+                        "—"}
                     </span>
 
 
                     <span
-                      title={d.txid}
+                      title={
+                        d.txid
+                      }
                       style={{
-                        fontFamily: "monospace"
+                        fontFamily:
+                          "monospace"
                       }}
                     >
+
                       {d.txid
-                        ? d.txid.slice(0, 20) + "..."
+                        ? d.txid.slice(
+                            0,
+                            20
+                          ) + "..."
                         : "—"}
+
                     </span>
 
 
                     <span
-                      title={d.block}
+                      title={
+                        d.block
+                      }
                       style={{
-                        fontFamily: "monospace"
+                        fontFamily:
+                          "monospace"
                       }}
                     >
+
                       {d.block
-                        ? d.block.slice(0, 20) + "..."
+                        ? d.block.slice(
+                            0,
+                            20
+                          ) + "..."
                         : "—"}
+
                     </span>
 
 
                     <span>
-                      {d.network || "Bitcoin"}
+                      {d.network ||
+                        "Bitcoin"}
                     </span>
 
 
-                   <span>
-  {d.data_source ||
-    "Blockchain.com Blockchain Data API"}
-</span>
+                    <span>
+                      {d.data_source ||
+                        "Blockchain.com Blockchain Data API"}
+                    </span>
 
                   </div>
-
                 )
               )}
 
@@ -818,6 +1337,10 @@ function Detection({
       )}
 
 
+      {/* =================================================
+          INVESTIGATION NOTE
+      ================================================= */}
+
       <section className="panel hero">
 
         <h2>
@@ -826,11 +1349,12 @@ function Detection({
 
         <p>
           Detection events are rule-based indicators
-          generated from live market and blockchain
-          data. A large transaction or unusual market
-          movement does not by itself establish fraud,
-          compromise, or criminal activity and should
-          be investigated with additional context.
+          generated from live market, blockchain and
+          fund-flow data. A large transaction, unusual
+          market movement, or multi-hop wallet pattern
+          does not by itself establish fraud, compromise,
+          or criminal activity and should be investigated
+          with additional context.
         </p>
 
       </section>
@@ -838,6 +1362,7 @@ function Detection({
     </>
   );
 }
+
 function WalletSearch() {
   const [network, setNetwork] = useState<"bitcoin" | "ethereum">("bitcoin");
   const [address, setAddress] = useState("");

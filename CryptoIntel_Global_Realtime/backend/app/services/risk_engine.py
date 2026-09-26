@@ -346,6 +346,102 @@ def analyze_detection(
                 ),
             }
         )
+    # --------------------------------------------------------
+    # MULTI-HOP FUND FLOW
+    # --------------------------------------------------------
+
+    elif detection_type == "MULTI_HOP_FUND_FLOW":
+
+        score += 20
+
+        hops = int(
+            detection.get("hops", 0) or 0
+        )
+
+        wallet_count = int(
+            detection.get("wallet_count", 0) or 0
+        )
+
+        edge_count = int(
+            detection.get("edge_count", 0) or 0
+        )
+
+        transactions_scanned = int(
+            detection.get("transactions_scanned", 0) or 0
+        )
+
+        indicators.append(
+            {
+                "indicator": "MULTI_HOP_FUND_FLOW",
+                "weight": 20,
+                "reason": (
+                    "A multi-hop fund-flow pattern "
+                    "was identified across blockchain "
+                    "wallet relationships."
+                ),
+            }
+        )
+
+        if hops >= 2:
+
+            score += 10
+
+            indicators.append(
+                {
+                    "indicator": "MULTI_HOP_DEPTH",
+                    "weight": 10,
+                    "reason": (
+                        f"The fund-flow analysis traced "
+                        f"{hops} blockchain hops."
+                    ),
+                }
+            )
+
+        if wallet_count >= 5:
+
+            score += 10
+
+            indicators.append(
+                {
+                    "indicator": "MULTIPLE_WALLETS",
+                    "weight": 10,
+                    "reason": (
+                        f"The fund-flow analysis identified "
+                        f"{wallet_count} wallets."
+                    ),
+                }
+            )
+
+        if edge_count >= 50:
+
+            score += 10
+
+            indicators.append(
+                {
+                    "indicator": "HIGH_FLOW_CONNECTIVITY",
+                    "weight": 10,
+                    "reason": (
+                        f"The analysis identified "
+                        f"{edge_count} wallet connections."
+                    ),
+                }
+            )
+
+        if transactions_scanned >= 50:
+
+            score += 10
+
+            indicators.append(
+                {
+                    "indicator": "HIGH_TRANSACTION_COVERAGE",
+                    "weight": 10,
+                    "reason": (
+                        f"The fund-flow analysis scanned "
+                        f"{transactions_scanned} transactions."
+                    ),
+                }
+            )
+
 
     # --------------------------------------------------------
     # GENERIC / UNKNOWN DETECTION
