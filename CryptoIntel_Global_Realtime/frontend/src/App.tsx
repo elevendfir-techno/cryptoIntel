@@ -159,7 +159,7 @@ export default function App(){
     <aside>
       <div className="logo">CRYPTO<span>INTEL</span></div>
       <div className="scope">GLOBAL REAL-TIME INTELLIGENCE</div>
-      {["Overview","Live Markets","Blockchain","Wallet Investigation","Fund Flow","Detection","Alerts","DFIR Cases"].map(x=>
+      {["Overview","Live Markets","Blockchain","Wallet Investigation","Fund Flow","Detection","Threat Intelligence","Alerts","DFIR Cases"].map(x=>
         <button className={page===x?"nav active":"nav"} onClick={()=>setPage(x)} key={x}>{x}</button>
       )}
       <div className="status"><i className={connected?"live":""}></i>{connected?"LIVE DATA CONNECTED":"CONNECTING..."}</div>
@@ -213,6 +213,7 @@ export default function App(){
       {page==="Wallet Investigation" && <WalletSearch/>}
       {page==="Fund Flow" && <FundFlow/>}
       {page==="Detection" && <Detection markets={latest} trades={trades}/>}
+      {page==="Threat Intelligence" && <ThreatIntelligence />}
       {page==="Alerts" && <section className="panel"><h2>Live Alerts</h2>{alerts.map((a,i)=><div className="alert big" key={i}><b>{a.severity}</b><span>{a.type}</span><span>{a.message}</span><small>{a.timestamp}</small></div>)}{!alerts.length&&<div className="empty">No active alerts.</div>}</section>}
       {page==="DFIR Cases" && <Info title="DFIR Investigation Workspace" text="Use crypto transaction timelines, wallet relationships, fund-flow graphs and exported evidence to support authorized investigations."/>}
     </main>
@@ -2731,6 +2732,366 @@ function FundFlowGraph({
   );
 }
 
+function ThreatIntelligence() {
+
+  const [indicatorType, setIndicatorType] =
+    useState("WALLET_ADDRESS");
+
+  const [indicator, setIndicator] =
+    useState("");
+
+  const [source, setSource] =
+    useState("Manual Threat Intelligence Input");
+
+  const [confidence, setConfidence] =
+    useState("HIGH");
+
+  const [severity, setSeverity] =
+    useState("HIGH");
+
+  const [network, setNetwork] =
+    useState("Ethereum");
+
+  const [result, setResult] =
+    useState<any>(null);
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const submitThreatInput = async () => {
+
+    if (!indicator.trim()) {
+      setError("Please enter an indicator.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setResult(null);
+
+    try {
+
+      const response = await fetch(
+        `${API}/api/threat-inputs`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            indicator_type: indicatorType,
+            indicator: indicator.trim(),
+            source,
+            confidence,
+            severity,
+            network
+          })
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.detail ||
+          "Threat input submission failed."
+        );
+      }
+
+      setResult(data);
+
+    } catch (err: any) {
+
+      setError(
+        err?.message ||
+        "Failed to submit threat input."
+      );
+
+    } finally {
+
+      setLoading(false);
+
+    }
+  };
+
+  return (
+    <section className="panel">
+
+      <h2>Threat Intelligence</h2>
+
+      <p>
+        Submit a threat-intelligence indicator
+        for real-time Detection, Risk and Alert
+        processing.
+      </p>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "repeat(auto-fit,minmax(220px,1fr))",
+          gap: "12px",
+          marginTop: "16px"
+        }}
+      >
+
+        <div>
+          <label>Indicator Type</label>
+
+          <select
+            value={indicatorType}
+            onChange={(e) =>
+              setIndicatorType(e.target.value)
+            }
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginTop: "6px"
+            }}
+          >
+            <option value="WALLET_ADDRESS">
+              WALLET_ADDRESS
+            </option>
+
+            <option value="TX_HASH">
+              TX_HASH
+            </option>
+
+            <option value="IP_ADDRESS">
+              IP_ADDRESS
+            </option>
+
+            <option value="DOMAIN">
+              DOMAIN
+            </option>
+
+            <option value="URL">
+              URL
+            </option>
+
+            <option value="EMAIL">
+              EMAIL
+            </option>
+
+          </select>
+        </div>
+
+        <div>
+          <label>Indicator</label>
+
+          <input
+            value={indicator}
+            onChange={(e) =>
+              setIndicator(e.target.value)
+            }
+            placeholder="Enter indicator"
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginTop: "6px"
+            }}
+          />
+        </div>
+
+        <div>
+          <label>Source</label>
+
+          <input
+            value={source}
+            onChange={(e) =>
+              setSource(e.target.value)
+            }
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginTop: "6px"
+            }}
+          />
+        </div>
+
+        <div>
+          <label>Network</label>
+
+          <select
+            value={network}
+            onChange={(e) =>
+              setNetwork(e.target.value)
+            }
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginTop: "6px"
+            }}
+          >
+            <option value="Ethereum">
+              Ethereum
+            </option>
+
+            <option value="Bitcoin">
+              Bitcoin
+            </option>
+
+            <option value="Solana">
+              Solana
+            </option>
+
+            <option value="Unknown">
+              Unknown
+            </option>
+
+          </select>
+        </div>
+
+        <div>
+          <label>Confidence</label>
+
+          <select
+            value={confidence}
+            onChange={(e) =>
+              setConfidence(e.target.value)
+            }
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginTop: "6px"
+            }}
+          >
+            <option value="LOW">LOW</option>
+            <option value="MEDIUM">MEDIUM</option>
+            <option value="HIGH">HIGH</option>
+          </select>
+        </div>
+
+        <div>
+          <label>Severity</label>
+
+          <select
+            value={severity}
+            onChange={(e) =>
+              setSeverity(e.target.value)
+            }
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginTop: "6px"
+            }}
+          >
+            <option value="LOW">LOW</option>
+            <option value="MEDIUM">MEDIUM</option>
+            <option value="HIGH">HIGH</option>
+            <option value="CRITICAL">CRITICAL</option>
+          </select>
+        </div>
+
+      </div>
+
+      <button
+        onClick={submitThreatInput}
+        disabled={loading}
+        style={{
+          marginTop: "18px",
+          padding: "10px 18px",
+          cursor: loading
+            ? "not-allowed"
+            : "pointer"
+        }}
+      >
+        {loading
+          ? "Processing..."
+          : "Submit Threat Indicator"}
+      </button>
+
+      {error && (
+        <div
+          style={{
+            marginTop: "16px",
+            padding: "12px"
+          }}
+        >
+          {error}
+        </div>
+      )}
+
+      {result && (
+        <div style={{ marginTop: "20px" }}>
+
+          <h3>Processing Result</h3>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(auto-fit,minmax(180px,1fr))",
+              gap: "10px",
+              marginTop: "12px"
+            }}
+          >
+
+            <div className="panel">
+              <b>Detection</b>
+              <div>
+                {result?.processing?.detection?.type ||
+                  "—"}
+              </div>
+            </div>
+
+            <div className="panel">
+              <b>Risk Score</b>
+              <div>
+                {result?.processing?.risk?.risk_score ??
+                  "—"}
+              </div>
+            </div>
+
+            <div className="panel">
+              <b>Risk Level</b>
+              <div>
+                {result?.processing?.risk?.risk_level ||
+                  "—"}
+              </div>
+            </div>
+
+            <div className="panel">
+              <b>Alert</b>
+              <div>
+                {result?.processing?.alert?.alert_id ||
+                  "No Alert"}
+              </div>
+            </div>
+
+          </div>
+
+          <details style={{ marginTop: "16px" }}>
+
+            <summary>
+              View Full Processing Response
+            </summary>
+
+            <pre
+              style={{
+                marginTop: "10px",
+                whiteSpace: "pre-wrap",
+                overflowX: "auto"
+              }}
+            >
+              {JSON.stringify(
+                result,
+                null,
+                2
+              )}
+            </pre>
+
+          </details>
+
+        </div>
+      )}
+
+    </section>
+  );
+}
 
 function FundFlow() {
 
