@@ -1220,6 +1220,20 @@ async def detection():
     )
 
     # =========================================================
+    # 7. FUND FLOW DETECTIONS
+    # =========================================================
+
+    fundflow_detections = list(
+        state.detections
+    )
+
+    fundflow_detections.reverse()
+
+    detections.extend(
+        fundflow_detections[:100]
+    )
+
+    # =========================================================
     # FINAL RESPONSE
     # =========================================================
 
@@ -1238,7 +1252,8 @@ async def detection():
             (
                 "Live exchange market feeds + "
                 "Bitcoin blockchain + "
-                "Ethereum real-time blockchain events"
+                "Ethereum real-time blockchain events + "
+                "Fund Flow Engine"
             ),
 
         "rules": {
@@ -1268,7 +1283,7 @@ async def detection():
                 "ACTIVE",
 
             "multi_hop_movement":
-                "BLOCKCHAIN ANALYSIS READY"
+                "ACTIVE"
         },
 
         "realtime_engine": {
@@ -1295,6 +1310,20 @@ async def detection():
 
             "status":
                 "RUNNING"
+        },
+
+        "fundflow_engine": {
+
+            "status":
+                "CONNECTED",
+
+            "stored_detections":
+                len(
+                    state.detections
+                ),
+
+            "multi_hop_detection":
+                "ACTIVE"
         },
 
         "risk_engine": {

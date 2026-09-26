@@ -18,6 +18,9 @@ class State:
 
         self.alerts = deque(maxlen=300)
 
+        # Shared real-time detection storage.
+        self.detections = deque(maxlen=500)
+
         self.blockchain_events = deque(
             maxlen=300
         )

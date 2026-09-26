@@ -4,6 +4,10 @@ import time
 import httpx
 import re
 
+from app.services.risk_engine import analyze_detection
+from app.services.alert_engine import process_risk_result
+from app.services.state import state
+
 
 router = APIRouter(
     prefix="/api/fundflow",
@@ -1421,6 +1425,161 @@ async def ethereum_fundflow(
             "Blockscout Ethereum API"
     }
 
+# =========================================================
+# FUND FLOW → DETECTION INTEGRATION
+# =========================================================
+
+async def process_fundflow_detection(result: dict):
+    """
+    Analyze a completed fund-flow result and send the
+    resulting detection through the existing Risk and
+    Alert engines.
+
+    This does NOT call the Fund Flow API again.
+    """
+
+    try:
+
+        if not isinstance(result, dict):
+            return
+
+        if result.get("status") not in (
+            "LIVE",
+            "PARTIAL"
+        ):
+            return
+
+        network = result.get(
+            "network",
+            "Unknown"
+        )
+
+        root_address = (
+            result.get("root_wallet")
+            or result.get("root")
+        )
+
+        hops_traced = int(
+            result.get(
+                "hops_traced",
+                0
+            ) or 0
+        )
+
+        wallet_count = int(
+            result.get(
+                "wallet_count",
+                0
+            )
+            or result.get(
+                "wallets",
+                0
+            )
+            or 0
+        )
+
+        edge_count = int(
+            result.get(
+                "edge_count",
+                0
+            )
+            or len(
+                result.get(
+                    "edges",
+                    []
+                ) or []
+            )
+        )
+
+        transactions = int(
+            result.get(
+                "transactions_scanned",
+                0
+            )
+            or result.get(
+                "transactions",
+                0
+            )
+            or 0
+        )
+
+        # Only generate a multi-hop detection
+        # when at least 2 hops were actually traced.
+        if hops_traced < 2:
+            return
+
+        detection = {
+
+            "type":
+                "MULTI_HOP_FUND_FLOW",
+
+            "category":
+                "BLOCKCHAIN_PATTERN",
+
+            "severity":
+                "MEDIUM",
+
+            "network":
+                network,
+
+            "address":
+                root_address,
+
+            "root_wallet":
+                root_address,
+
+            "hops":
+                hops_traced,
+
+            "wallet_count":
+                wallet_count,
+
+            "edge_count":
+                edge_count,
+
+            "transactions_scanned":
+                transactions,
+
+            "message":
+                (
+                    f"Multi-hop fund flow detected on "
+                    f"{network}: {hops_traced} hops, "
+                    f"{wallet_count} wallets and "
+                    f"{edge_count} connections."
+                ),
+
+            "source":
+                "Fund Flow Engine",
+
+            "status":
+                "LIVE"
+        }
+        
+        # Store Fund Flow detection in shared real-time state.
+        # This makes the detection available through
+        # /api/detection and the frontend Detection page.
+        async with state.lock:
+            state.detections.append(
+                detection
+            )
+
+        # Send the detection to the existing Risk Engine.
+        risk_result = analyze_detection(
+            detection
+        )
+
+        # Send the risk result to the existing Alert Engine.
+        if risk_result:
+
+            await process_risk_result(
+                risk_result
+            )
+
+    except Exception as exc:
+        print(
+            "FUND FLOW DETECTION ERROR:",
+            repr(exc)
+        )
 
 # =========================================================
 # FUND FLOW
@@ -1479,11 +1638,17 @@ async def fundflow(
                 timeout=30
             ) as client:
 
-                return await ethereum_fundflow(
+                result = await ethereum_fundflow(
                     client,
                     address,
                     hops
                 )
+
+                await process_fundflow_detection(
+                   result
+                )
+
+                return result
 
         except HTTPException:
             raise
