@@ -1305,12 +1305,13 @@ function Detection({
                       }}
                     >
 
-                      {d.block
-                        ? d.block.slice(
-                            0,
-                            20
-                          ) + "..."
-                        : "—"}
+                      {d.block !== undefined &&
+                      d.block !== null
+                       ? String(d.block).slice(
+                           0,
+                           20
+                         ) + "..."
+                       : "—"}
 
                     </span>
 
