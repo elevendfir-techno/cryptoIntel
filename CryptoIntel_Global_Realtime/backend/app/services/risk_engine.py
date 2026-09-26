@@ -346,6 +346,85 @@ def analyze_detection(
                 ),
             }
         )
+
+    # --------------------------------------------------------
+    # THREAT INTELLIGENCE INDICATOR
+    # --------------------------------------------------------
+
+    elif detection_type == "THREAT INTELLIGENCE INDICATOR":
+
+        score += 30
+
+        indicators.append(
+            {
+                "indicator": "THREAT_INTELLIGENCE",
+                "weight": 30,
+                "reason": (
+                    "A threat-intelligence indicator "
+                    "was submitted for risk analysis."
+                ),
+            }
+        )
+
+        severity = str(
+            detection.get(
+                "severity",
+                "MEDIUM",
+            )
+        ).upper()
+
+        confidence = str(
+            detection.get(
+                "confidence",
+                "UNKNOWN",
+            )
+        ).upper()
+
+        if severity == "CRITICAL":
+
+            score += 30
+
+            indicators.append(
+                {
+                    "indicator": "CRITICAL_THREAT_SEVERITY",
+                    "weight": 30,
+                    "reason": (
+                        "The threat-intelligence input "
+                        "has CRITICAL severity."
+                    ),
+                }
+            )
+
+        elif severity == "HIGH":
+
+            score += 20
+
+            indicators.append(
+                {
+                    "indicator": "HIGH_THREAT_SEVERITY",
+                    "weight": 20,
+                    "reason": (
+                        "The threat-intelligence input "
+                        "has HIGH severity."
+                    ),
+                }
+            )
+
+        if confidence == "HIGH":
+
+            score += 20
+
+            indicators.append(
+                {
+                    "indicator": "HIGH_THREAT_CONFIDENCE",
+                    "weight": 20,
+                    "reason": (
+                        "The threat-intelligence input "
+                        "has HIGH confidence."
+                    ),
+                }
+            )
+
     # --------------------------------------------------------
     # MULTI-HOP FUND FLOW
     # --------------------------------------------------------

@@ -21,6 +21,9 @@ class State:
         # Shared real-time detection storage.
         self.detections = deque(maxlen=500)
 
+        # Threat intelligence input storage.
+        self.threat_inputs = deque(maxlen=500)
+
         self.blockchain_events = deque(
             maxlen=300
         )

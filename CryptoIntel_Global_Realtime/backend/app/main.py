@@ -21,6 +21,7 @@ from app.api.solana import router as solana_router
 from app.api.tron import router as tron_router
 from app.api.xrpl import router as xrpl_router
 from app.api.cardano import router as cardano_router
+from app.api.threat_inputs import router as threat_inputs_router
 
 from app.collectors.binance import run_binance
 from app.collectors.coinbase import run_coinbase
@@ -62,6 +63,7 @@ app.include_router(solana_router)
 app.include_router(tron_router)
 app.include_router(xrpl_router)
 app.include_router(cardano_router)
+app.include_router(threat_inputs_router)
 
 # =========================================================
 # ROOT
