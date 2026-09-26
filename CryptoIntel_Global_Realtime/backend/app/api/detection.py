@@ -1245,8 +1245,14 @@ async def detection():
         "total_detections":
             len(detections),
 
-        "detections":
-            detections[:100],
+       "detections":
+           (
+               list(
+                   reversed(
+                       detections
+                   )
+               )[:100]
+           ),
 
         "source":
             (
