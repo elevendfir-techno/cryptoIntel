@@ -561,14 +561,25 @@ header p {
 }
 
 .big {
-  gap: 18px;
-  padding: 13px 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.big + .big {
+  margin-top: 4px;
 }
 
 .big small {
-  margin-left: auto;
+  margin-left: 0;
   color: #627079;
   white-space: nowrap;
+}
+
+.big > small {
+  margin-left: auto;
 }
 
 /* =========================================

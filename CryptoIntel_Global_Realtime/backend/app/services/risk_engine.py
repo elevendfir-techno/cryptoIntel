@@ -70,6 +70,7 @@ def utc_now() -> str:
 
 
 def calculate_risk_level(score: int) -> str:
+
     if score >= 80:
         return RISK_LEVEL_CRITICAL
 
@@ -93,29 +94,47 @@ async def _process_correlation(
     Send an individual risk result to the
     Risk Correlation Engine.
 
-    If multiple risk indicators belong to the same
-    transaction/address inside the correlation window,
-    the correlation engine returns a combined result.
+    If multiple independent risk indicators belong to the
+    same transaction/address inside the correlation window,
+    the correlation engine creates one combined risk result.
 
-    The combined result is then forwarded to the
-    Alert Engine.
+    The combined result is then forwarded to the Alert Engine.
     """
 
     global CORRELATED_RISK_RESULTS_CREATED
 
     try:
 
+        # ----------------------------------------------------
+        # SEND TO CORRELATION ENGINE
+        # ----------------------------------------------------
+
         correlated_result = await correlate_risk_result(
             risk_result
         )
 
+        # No correlation yet.
+        #
+        # This is normal when only one detection type exists.
         if not correlated_result:
             return None
 
+        # ----------------------------------------------------
+        # CORRELATION CREATED
+        # ----------------------------------------------------
+
         CORRELATED_RISK_RESULTS_CREATED += 1
 
+        print(
+            "[RISK CORRELATION] "
+            f"{correlated_result.get('detection_types')} "
+            f"-> "
+            f"{correlated_result.get('risk_score')} "
+            f"{correlated_result.get('risk_level')}"
+        )
+
         # ----------------------------------------------------
-        # Forward correlated risk to Alert Engine
+        # FORWARD CORRELATED RESULT TO ALERT ENGINE
         # ----------------------------------------------------
 
         try:
@@ -128,16 +147,34 @@ async def _process_correlation(
                 correlated_result
             )
 
-        except Exception:
-            # Alert failure must not break
-            # Risk Analysis processing.
-            pass
+            print(
+                "[RISK ALERT] "
+                "Correlated alert processed | "
+                f"score={correlated_result.get('risk_score')} | "
+                f"level={correlated_result.get('risk_level')} | "
+                f"txid={correlated_result.get('txid')}"
+            )
+
+        except Exception as exc:
+
+            # Alert failure must never break
+            # the Risk Analysis Engine.
+            print(
+                "[RISK ALERT ERROR] "
+                f"{type(exc).__name__}: {exc}"
+            )
 
         return correlated_result
 
-    except Exception:
-        # Correlation failure must not break
-        # the main Risk Engine.
+    except Exception as exc:
+
+        # Correlation failure must never break
+        # the main Risk Analysis Engine.
+        print(
+            "[RISK CORRELATION ERROR] "
+            f"{type(exc).__name__}: {exc}"
+        )
+
         return None
 
 
@@ -147,8 +184,8 @@ def _schedule_correlation(
     """
     Schedule the asynchronous correlation bridge.
 
-    Risk analysis itself remains synchronous so existing
-    Detection Engine behavior is preserved.
+    Risk analysis remains synchronous so existing
+    Detection Engine behaviour is preserved.
     """
 
     try:
@@ -156,17 +193,56 @@ def _schedule_correlation(
         loop = asyncio.get_running_loop()
 
     except RuntimeError:
+
+        print(
+            "[RISK CORRELATION] "
+            "No running event loop; "
+            "correlation was not scheduled."
+        )
+
         return
 
-    loop.create_task(
-        _process_correlation(
-            risk_result
+    try:
+
+        task = loop.create_task(
+            _process_correlation(
+                risk_result
+            )
         )
-    )
+
+        # ----------------------------------------------------
+        # TASK ERROR VISIBILITY
+        # ----------------------------------------------------
+
+        def _correlation_task_done(
+            completed_task: asyncio.Task,
+        ) -> None:
+
+            try:
+
+                completed_task.result()
+
+            except Exception as exc:
+
+                print(
+                    "[RISK CORRELATION TASK ERROR] "
+                    f"{type(exc).__name__}: {exc}"
+                )
+
+        task.add_done_callback(
+            _correlation_task_done
+        )
+
+    except Exception as exc:
+
+        print(
+            "[RISK CORRELATION SCHEDULE ERROR] "
+            f"{type(exc).__name__}: {exc}"
+        )
 
 
 # ============================================================
-# RISK RULES
+# RISK ANALYSIS
 # ============================================================
 
 def analyze_detection(
@@ -192,13 +268,13 @@ def analyze_detection(
         "UNKNOWN",
     )
 
-    address = detection.get(
-        "from"
-    ) or detection.get(
-        "address"
+    address = (
+        detection.get("from")
+        or detection.get("address")
     )
 
     score = 0
+
     indicators: list[dict[str, Any]] = []
 
     # --------------------------------------------------------
@@ -252,15 +328,19 @@ def analyze_detection(
         )
 
         if transaction_count is None:
+
             value_text = str(
                 detection.get("value", "")
             )
 
             try:
+
                 transaction_count = int(
                     value_text.split()[0]
                 )
+
             except (ValueError, IndexError):
+
                 transaction_count = 0
 
         if transaction_count >= 50:
@@ -269,7 +349,9 @@ def analyze_detection(
 
             indicators.append(
                 {
-                    "indicator": "EXTREME TRANSACTION VELOCITY",
+                    "indicator": (
+                        "EXTREME TRANSACTION VELOCITY"
+                    ),
                     "weight": 20,
                     "reason": (
                         "The address generated at least "
@@ -281,7 +363,9 @@ def analyze_detection(
 
         indicators.append(
             {
-                "indicator": "RAPID TRANSACTION ACTIVITY",
+                "indicator": (
+                    "RAPID TRANSACTION ACTIVITY"
+                ),
                 "weight": 30,
                 "reason": (
                     "A single address generated many "
@@ -386,7 +470,9 @@ def analyze_detection(
 
             indicators.append(
                 {
-                    "indicator": "CRITICAL_THREAT_SEVERITY",
+                    "indicator": (
+                        "CRITICAL_THREAT_SEVERITY"
+                    ),
                     "weight": 30,
                     "reason": (
                         "The threat-intelligence input "
@@ -401,7 +487,9 @@ def analyze_detection(
 
             indicators.append(
                 {
-                    "indicator": "HIGH_THREAT_SEVERITY",
+                    "indicator": (
+                        "HIGH_THREAT_SEVERITY"
+                    ),
                     "weight": 20,
                     "reason": (
                         "The threat-intelligence input "
@@ -416,7 +504,9 @@ def analyze_detection(
 
             indicators.append(
                 {
-                    "indicator": "HIGH_THREAT_CONFIDENCE",
+                    "indicator": (
+                        "HIGH_THREAT_CONFIDENCE"
+                    ),
                     "weight": 20,
                     "reason": (
                         "The threat-intelligence input "
@@ -434,19 +524,31 @@ def analyze_detection(
         score += 20
 
         hops = int(
-            detection.get("hops", 0) or 0
+            detection.get(
+                "hops",
+                0,
+            ) or 0
         )
 
         wallet_count = int(
-            detection.get("wallet_count", 0) or 0
+            detection.get(
+                "wallet_count",
+                0,
+            ) or 0
         )
 
         edge_count = int(
-            detection.get("edge_count", 0) or 0
+            detection.get(
+                "edge_count",
+                0,
+            ) or 0
         )
 
         transactions_scanned = int(
-            detection.get("transactions_scanned", 0) or 0
+            detection.get(
+                "transactions_scanned",
+                0,
+            ) or 0
         )
 
         indicators.append(
@@ -512,7 +614,9 @@ def analyze_detection(
 
             indicators.append(
                 {
-                    "indicator": "HIGH_TRANSACTION_COVERAGE",
+                    "indicator": (
+                        "HIGH_TRANSACTION_COVERAGE"
+                    ),
                     "weight": 10,
                     "reason": (
                         f"The fund-flow analysis scanned "
@@ -520,7 +624,6 @@ def analyze_detection(
                     ),
                 }
             )
-
 
     # --------------------------------------------------------
     # GENERIC / UNKNOWN DETECTION
@@ -532,8 +635,10 @@ def analyze_detection(
 
         indicators.append(
             {
-                "indicator": detection_type
-                or "UNKNOWN DETECTION",
+                "indicator": (
+                    detection_type
+                    or "UNKNOWN DETECTION"
+                ),
                 "weight": 10,
                 "reason": (
                     "A detection event was received "
@@ -546,7 +651,10 @@ def analyze_detection(
     # BOUND SCORE
     # --------------------------------------------------------
 
-    score = min(score, 100)
+    score = min(
+        score,
+        100,
+    )
 
     risk_level = calculate_risk_level(
         score
@@ -568,7 +676,9 @@ def analyze_detection(
         "indicators": indicators,
         "indicator_count": len(indicators),
         "analyzed_at": utc_now(),
-        "source": "CryptoIntel Risk Analysis Engine",
+        "source": (
+            "CryptoIntel Risk Analysis Engine"
+        ),
         "status": "ANALYZED",
     }
 

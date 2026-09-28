@@ -9,6 +9,7 @@ They do NOT automatically declare fraud or criminal activity.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -32,6 +33,9 @@ ALERT_RISK_SCORE_THRESHOLD = 60
 
 ALERTS_CREATED = 0
 ALERTS_SUPPRESSED = 0
+
+# Prevent concurrent duplicate alert creation.
+ALERT_DEDUP_LOCK = asyncio.Lock()
 
 
 # ============================================================
@@ -76,6 +80,7 @@ async def create_alert(
 ) -> dict[str, Any]:
 
     global ALERTS_CREATED
+    global ALERTS_SUPPRESSED
 
     risk_score = int(
         risk_result.get(
@@ -99,6 +104,9 @@ async def create_alert(
         "detection_type",
         "UNKNOWN",
     )
+
+    txid = risk_result.get("txid")
+    network = risk_result.get("network")
 
     # --------------------------------------------------------
     # Human-readable reason
@@ -165,9 +173,7 @@ async def create_alert(
             risk_level,
 
         "network":
-            risk_result.get(
-                "network"
-            ),
+            network,
 
         "asset":
             risk_result.get(
@@ -180,9 +186,7 @@ async def create_alert(
             ),
 
         "txid":
-            risk_result.get(
-                "txid"
-            ),
+            txid,
 
         "block":
             risk_result.get(
@@ -215,7 +219,73 @@ async def create_alert(
     }
 
     # --------------------------------------------------------
-    # Store in existing global state
+    # TRANSACTION ALERT DEDUPLICATION
+    # --------------------------------------------------------
+    #
+    # Same:
+    #   network + txid + detection_type
+    #       -> existing alert returned
+    #
+    # Different txid:
+    #       -> new alert
+    #
+    # Events without txid:
+    #       -> no transaction deduplication
+    #
+    # The lock stays active through the actual add_alert()
+    # operation to prevent concurrent duplicate creation.
+    # --------------------------------------------------------
+
+    if txid:
+
+        dedup_key = (
+            f"{str(network).lower()}|"
+            f"{str(txid).lower()}|"
+            f"{str(detection_type).upper()}"
+        )
+
+        async with ALERT_DEDUP_LOCK:
+
+            for existing_alert in state.alerts:
+
+                if not isinstance(
+                    existing_alert,
+                    dict,
+                ):
+                    continue
+
+                existing_txid = existing_alert.get(
+                    "txid"
+                )
+
+                if not existing_txid:
+                    continue
+
+                existing_key = (
+                    f"{str(existing_alert.get('network')).lower()}|"
+                    f"{str(existing_txid).lower()}|"
+                    f"{str(existing_alert.get('detection_type')).upper()}"
+                )
+
+                if existing_key == dedup_key:
+
+                    ALERTS_SUPPRESSED += 1
+
+                    return existing_alert
+
+            # No duplicate found.
+            # Store the new alert while still holding the lock.
+
+            await state.add_alert(
+                alert
+            )
+
+            ALERTS_CREATED += 1
+
+            return alert
+
+    # --------------------------------------------------------
+    # Non-transaction alert
     # --------------------------------------------------------
 
     await state.add_alert(

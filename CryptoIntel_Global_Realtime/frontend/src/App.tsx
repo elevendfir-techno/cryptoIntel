@@ -90,35 +90,96 @@ export default function App(){
       if (alertResponse.ok) {
 
         const realAlerts = (
-          Array.isArray(alertData)
-            ? alertData
-            : alertData.alerts || []
-        ).map((a: any) => ({
+  Array.isArray(alertData)
+    ? alertData
+    : alertData.alerts || []
+).map((a: any) => ({
 
-          type:
-            a.detection_type ||
-            a.alert_type ||
-            a.type ||
-            "RISK ALERT",
+  alert_id:
+    a.alert_id || `ALT-${Date.now()}`,
 
-          severity:
-            a.severity ||
-            a.risk_level ||
-            "UNKNOWN",
+  alert_type:
+    a.alert_type ||
+    "RISK ALERT",
 
-          message:
-            a.reason ||
-            a.message ||
-            "Risk alert generated",
+  type:
+    a.detection_type ||
+    a.alert_type ||
+    a.type ||
+    "RISK ALERT",
 
-          timestamp:
-            a.created_at ||
-            a.timestamp ||
-            new Date().toISOString()
+  severity:
+    a.severity ||
+    a.risk_level ||
+    "UNKNOWN",
 
-        }));
+  risk_score:
+    a.risk_score ?? null,
 
-        setAlerts(realAlerts);
+  risk_level:
+    a.risk_level ||
+    a.severity ||
+    "UNKNOWN",
+
+  network:
+    a.network ||
+    "N/A",
+
+  asset:
+    a.asset ||
+    "N/A",
+
+  address:
+    a.address ||
+    "",
+
+  txid:
+    a.txid ||
+    "",
+
+  block:
+    a.block ?? null,
+
+  detection_type:
+    a.detection_type ||
+    a.type ||
+    "N/A",
+
+  indicator_count:
+    a.indicator_count ?? 0,
+
+  indicators:
+    Array.isArray(a.indicators)
+      ? a.indicators
+      : [],
+
+  reason:
+    a.reason ||
+    a.message ||
+    "Risk alert generated",
+
+  message:
+    a.message ||
+    a.reason ||
+    "Risk alert generated",
+
+  status:
+    a.status ||
+    "NEW",
+
+  created_at:
+    a.created_at ||
+    a.timestamp ||
+    new Date().toISOString(),
+
+  timestamp:
+    a.created_at ||
+    a.timestamp ||
+    new Date().toISOString()
+
+}));
+
+setAlerts(realAlerts);
 
       }
 
@@ -214,7 +275,275 @@ export default function App(){
       {page==="Fund Flow" && <FundFlow/>}
       {page==="Detection" && <Detection markets={latest} trades={trades}/>}
       {page==="Threat Intelligence" && <ThreatIntelligence />}
-      {page==="Alerts" && <section className="panel"><h2>Live Alerts</h2>{alerts.map((a,i)=><div className="alert big" key={i}><b>{a.severity}</b><span>{a.type}</span><span>{a.message}</span><small>{a.timestamp}</small></div>)}{!alerts.length&&<div className="empty">No active alerts.</div>}</section>}
+      {page==="Alerts" && (
+  <section className="panel">
+
+    <h2>Live Alerts</h2>
+
+    {alerts.map((a:any, i:number) => (
+
+      <div
+        className="alert big"
+        key={a.alert_id || a.txid || i}
+        style={{
+          padding:"10px 12px",
+          marginBottom:"6px",
+          borderRadius:"10px"
+        }}
+      >
+
+        {/* ALERT HEADER */}
+        <div
+          style={{
+            display:"flex",
+            justifyContent:"space-between",
+            alignItems:"center",
+            gap:"12px",
+            marginBottom:"12px"
+          }}
+        >
+
+          <div>
+            <b>{a.severity || "UNKNOWN"}</b>
+
+            <span
+              style={{
+                marginLeft:"12px"
+              }}
+            >
+              {a.alert_type || a.type || "RISK ALERT"}
+            </span>
+          </div>
+
+          <strong>
+            Risk Score: {a.risk_score ?? "N/A"}
+          </strong>
+
+        </div>
+
+
+        {/* NETWORK / ASSET / RISK / STATUS / BLOCK */}
+        <div
+          style={{
+            display:"grid",
+            gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",
+            gap:"8px",
+            marginBottom:"12px"
+          }}
+        >
+
+          <div
+            style={{
+              padding:"9px 10px",
+              borderRadius:"8px",
+              border:"1px solid rgba(255,255,255,0.08)"
+           }}
+          >
+            <small>NETWORK</small>
+            <div style={{marginTop:"5px",fontWeight:600}}>
+              {a.network || "N/A"}
+            </div>
+          </div>
+
+
+          <div
+            style={{
+              padding:"12px",
+              borderRadius:"8px",
+              border:"1px solid rgba(255,255,255,0.08)"
+            }}
+          >
+            <small>ASSET</small>
+            <div style={{marginTop:"5px",fontWeight:600}}>
+              {a.asset || "N/A"}
+            </div>
+          </div>
+
+
+          <div
+            style={{
+              padding:"12px",
+              borderRadius:"8px",
+              border:"1px solid rgba(255,255,255,0.08)"
+            }}
+          >
+            <small>RISK LEVEL</small>
+            <div style={{marginTop:"5px",fontWeight:600}}>
+              {a.risk_level || a.severity || "N/A"}
+            </div>
+          </div>
+
+
+          <div
+            style={{
+              padding:"12px",
+              borderRadius:"8px",
+              border:"1px solid rgba(255,255,255,0.08)"
+            }}
+          >
+            <small>STATUS</small>
+            <div style={{marginTop:"5px",fontWeight:600}}>
+              {a.status || "NEW"}
+            </div>
+          </div>
+
+
+          <div
+            style={{
+              padding:"12px",
+              borderRadius:"8px",
+              border:"1px solid rgba(255,255,255,0.08)"
+            }}
+          >
+            <small>BLOCK</small>
+            <div style={{marginTop:"5px",fontWeight:600}}>
+              {a.block ?? "N/A"}
+            </div>
+          </div>
+
+        </div>
+
+
+        {/* DETECTION */}
+        <div style={{marginBottom:"6px"}}>
+
+          <b>Detection</b>
+
+          <div style={{marginTop:"2px"}}>
+            {a.detection_type || a.type || "N/A"}
+          </div>
+
+        </div>
+
+
+        {/* INDICATORS */}
+        {a.indicators?.length > 0 && (
+
+          <div style={{marginBottom:"10px"}}>
+
+            <b>Indicators</b>
+
+            <div
+              style={{
+                marginTop:"6px",
+                display:"flex",
+                flexDirection:"column",
+                gap:"4px"
+              }}
+            >
+
+              {a.indicators.map((indicator:any, j:number) => (
+
+                <div
+                  key={j}
+                  style={{
+                    display:"flex",
+                    justifyContent:"space-between",
+                    padding:"5px 10px",
+                    borderRadius:"6px",
+                    background:"rgba(255,255,255,0.03)"
+                  }}
+                >
+                  <span>
+                    • {indicator.indicator}
+                  </span>
+
+                  <strong>
+                    +{indicator.weight}
+                  </strong>
+
+                </div>
+
+              ))}
+
+            </div>
+
+          </div>
+
+        )}
+
+
+        {/* REASON */}
+        <div style={{marginBottom:"10px"}}>
+
+          <b>Reason</b>
+
+          <div
+            style={{
+              marginTop:"2px",
+              lineHeight:"1.6"
+            }}
+          >
+            {a.reason || a.message || "No reason available"}
+          </div>
+
+        </div>
+
+
+        {/* ADDRESS */}
+        {a.address && (
+
+          <div style={{marginBottom:"6px"}}>
+
+            <b>Address</b>
+
+            <div
+              style={{
+                marginTop:"6px",
+                wordBreak:"break-all",
+                fontFamily:"monospace"
+              }}
+            >
+              {a.address}
+            </div>
+
+          </div>
+
+        )}
+
+
+        {/* TXID */}
+        {a.txid && (
+
+          <div style={{marginBottom:"6px"}}>
+
+            <b>TXID</b>
+
+            <div
+              style={{
+                marginTop:"4px",
+                wordBreak:"break-all",
+                fontFamily:"monospace"
+              }}
+            >
+              {a.txid}
+            </div>
+
+          </div>
+
+        )}
+
+
+        {/* TIMESTAMP */}
+        <small style={{opacity:0.6}}>
+          {a.created_at || a.timestamp}
+        </small>
+
+      </div>
+
+    ))}
+
+
+    {!alerts.length && (
+
+      <div className="empty">
+        No active alerts.
+      </div>
+
+    )}
+
+  </section>
+)}
       {page==="DFIR Cases" && <Info title="DFIR Investigation Workspace" text="Use crypto transaction timelines, wallet relationships, fund-flow graphs and exported evidence to support authorized investigations."/>}
     </main>
   </div>
